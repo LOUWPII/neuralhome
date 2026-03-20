@@ -179,9 +179,6 @@ Las contribuciones siguen nuestro `rules/buenas-practicas.md` original:
 
 ---
 
-## 📄 License
-
-Este proyecto se encuentra bajo [Licencia MIT](LICENSE). Siéntete libre de transformarlo y alojar conocimiento en el inmenso Palacio de la Mente.
 
 <div align="center">
 <sub>Construido para el Futuro del Aprendizaje Humano. 🏔️</sub>

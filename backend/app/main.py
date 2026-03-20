@@ -1,0 +1,29 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+from app.api.endpoints import ingest
+
+app = FastAPI(
+    title=settings.project_name,
+    version=settings.version,
+    description="Backend API for NeuralHome RAG Pipeline",
+)
+
+# CORS config
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "project": settings.project_name}
+
+# Router inclusion
+app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])

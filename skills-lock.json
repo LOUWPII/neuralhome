@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "readme-blueprint-generator": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "e2c7dabf2e455794260f1516e2ceda6a82dc92a409578cc184fcb0f45bddca54"
+    }
+  }
+}

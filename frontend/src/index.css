@@ -1,0 +1,191 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Color Palette - Cyber Crypto Look */
+  --bg-dark: #05000b;
+  --bg-card: rgba(18, 5, 34, 0.4);
+  --bg-card-hover: rgba(30, 10, 50, 0.6);
+  --primary-glow: #7c3aed;
+  --primary-bright: #a78bfa;
+  --secondary: #2dd4bf;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border-neon: rgba(124, 58, 237, 0.3);
+  --border-neon-bright: rgba(124, 58, 237, 0.8);
+
+  /* Typography */
+  --font-main: 'Plus Jakarta Sans', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-main);
+  background: var(--bg-dark);
+  color: var(--text-main);
+  line-height: 1.5;
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(45, 212, 191, 0.05) 0%, transparent 40%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-neon);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+  transition: all 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: var(--border-neon-bright);
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.2);
+}
+
+/* Typography Classes */
+.heading-glow {
+  background: linear-gradient(to right, #ffffff, #d8b4fe);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 30px rgba(124, 58, 237, 0.4);
+}
+
+/* Custom Buttons */
+.btn-neon {
+  background: var(--primary-glow);
+  color: white;
+  border: none;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-family: var(--font-main);
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 15px rgba(124, 58, 237, 0.5);
+}
+
+.btn-neon:hover {
+  background: #6d28d9;
+  box-shadow: 0 0 25px rgba(124, 58, 237, 0.8);
+  transform: translateY(-2px);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-neon);
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-family: var(--font-main);
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-outline:hover {
+  border-color: var(--border-neon-bright);
+  background: rgba(124, 58, 237, 0.1);
+  box-shadow: 0 0 15px rgba(124, 58, 237, 0.3);
+}
+
+/* Inputs */
+.input-glass {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-neon);
+  color: var(--text-main);
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-family: var(--font-main);
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.input-glass:focus {
+  outline: none;
+  border-color: var(--primary-bright);
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.3);
+}
+
+.input-glass::placeholder {
+  color: var(--text-muted);
+}
+
+/* Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 20px var(--primary-bright);
+  }
+
+  100% {
+    opacity: 0.5;
+  }
+}
+
+/* Layout Utilities */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Navbar utilities */
+.nav-links {
+  display: none;
+  gap: 2rem;
+  color: var(--text-muted);
+}
+
+@media (min-width: 768px) {
+  .nav-links {
+    display: flex;
+  }
+}
+
+/* R3F Canvas Container */
+#root {
+  width: 100vw;
+  height: 100vh;
+}

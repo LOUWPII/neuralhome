@@ -130,3 +130,6 @@ backend/.env
 frontend/.env
 frontend/dist/
 *.pdf
+
+# Dev/utility scripts (should not be committed)
+backend/fix_logo.py

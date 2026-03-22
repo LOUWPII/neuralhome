@@ -1,4 +1,4 @@
-# NeuralHome: Documentación Técnica y Arquitectura (V1.0)
+# NeuralHome: Documentación Técnica y Arquitectura (V1.1)
 
 ## 📌 1. Visión General del Proyecto
 **NeuralHome** es una aplicación innovadora de "Palacio Mental 3D" (Mind Palace) que transforma documentos de estudio (PDFs) estructurados y aburridos en un entorno espacial interactivo en 3D. 
@@ -61,7 +61,78 @@ Cuando el usuario envía el formulario con el PDF, se ejecuta este pipeline crí
 
 ---
 
-## 🚀 5. Próximos Pasos & Roadmap (Sprints 2+)
+## ✨ 5. Mejoras de UI/UX — Sprint 2 (Landing Page)
+
+En este sprint se trabajó exclusivamente sobre la **Landing Page** (`LandingPage.jsx`), mejorando su nivel de impacto visual y experiencia de usuario de forma significativa.
+
+### 5.1 Logo en Navbar
+**Archivo afectado**: `frontend/src/pages/LandingPage.jsx`, `frontend/public/logo.png`
+
+- Se reemplazó el placeholder de círculo morado sólido del navbar por el **logo oficial de NeuralHome** (ícono de cerebro-casa, neon lila).
+- El logo PNG fue procesado programáticamente para eliminar su fondo blanco y convertirlo a **PNG transparente** con tono neón `#c4b5fd` mediante un script Python (`Pillow`), pixel a pixel.
+- En el JSX, se aplicó `filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.7))` para que el logo emita el característico glow del sistema de diseño.
+- Las proporciones se mantienen con `objectFit: contain` a `34×34px`, perfectamente alineado al texto con `gap: 0.5rem`.
+
+```jsx
+<img
+  src="/logo.png"
+  alt="NeuralHome Logo"
+  style={{
+    width: '34px',
+    height: '34px',
+    objectFit: 'contain',
+    filter: 'drop-shadow(0 0 6px rgba(167, 139, 250, 0.7))',
+  }}
+/>
+```
+
+### 5.2 Efecto de Mouse Trail (Partículas en Canvas)
+**Archivo creado**: `frontend/src/components/HeroParticleCanvas.jsx`
+
+Se construyó un componente React nuevo que encapsula un **loop de renderizado Canvas 2D de alto rendimiento** que genera un rastro de partículas brillantes tipo estrella al mover el cursor sobre el área principal del Landing.
+
+#### Características técnicas:
+| Aspecto | Detalle |
+|---|---|
+| **Renderer** | Canvas 2D nativo (`requestAnimationFrame` loop a ~60fps) |
+| **Scoping** | Scoped vía `containerRef` al `<main>` del Landing (no contamina otras páginas) |
+| **Mobile** | Detecta `@media (hover: none)` y desactiva el efecto completamente en dispositivos táctiles |
+| **Partículas** | 2–4 por evento de mousemove, pool máx. 300 |
+| **Física** | Drift vertical suave (`vy -= 0.015`), drag horizontal (`vx *= 0.98`), desvanecimiento por `decay` individual |
+| **Glow** | Doble render: aura radial externa suave + núcleo brillante blanco sólido |
+| **Colores** | Variación HSL en rango 255-284 (violeta/lila) con `sat: 70-90%` y `light: 70-90%` |
+
+#### Corrección crítica del bug RAF (Race Condition):
+El efecto paraba de funcionar a los ~2 segundos en modo desarrollo debido a una **race condition entre React StrictMode y `requestAnimationFrame`**. StrictMode monta/desmonta componentes dos veces intencionalmente; cuando el cleanup corría, el frame RAF ya en cola se ejecutaba de todas formas y re-agendaba el loop creando un **loop zombie**.
+
+**Solución**: Se introdujo el flag `isCleanedUpRef`:
+```js
+// En cleanup
+isCleanedUpRef.current = true;  // señal de "terminado"
+
+// Primera línea del render loop
+if (isCleanedUpRef.current) return; // el zombie se detiene solo
+```
+Adicionalmente, el `useEffect` usa `deps: []` (corre exactamente una vez por montaje), y el listener de mousemove usa `{ passive: true }` para mejor rendimiento de scroll.
+
+### 5.3 Expansión del Área Interactiva
+**Archivo afectado**: `frontend/src/pages/LandingPage.jsx`
+
+El efecto de partículas originalmente estaba scoped solo a la sección `<section>` del hero. Las figuras geométricas decorativas (⌬ ◆ ⎔) estaban en un bloque hermano **afuera del canvas**, por lo que el efecto se cortaba al bajar.
+
+**Solución**: Se reorganizó el JSX creando un `<main ref={heroRef}>` unificado que envuelve tanto la sección del hero como el bloque decorativo:
+
+```
+<main ref={heroRef}> ← Canvas scoped aquí (cubre todo)
+  <HeroParticleCanvas containerRef={heroRef} />
+  <section> ... Hero text y botones ... </section>
+  <div> ... Figuras ⌬ ◆ ⎔ ... </div>
+</main>
+```
+
+---
+
+## 🚀 6. Próximos Pasos & Roadmap (Sprints 3+)
 
 1. **Socratic Study Toolkit**: Al dar *click* real en los objetos holográficos 3D, se abrirá un chat socrático lateral. Se inyectará el contexto y el *embedding vec* específico de ese objeto para charlar con la IA solo sobre ese concepto concreto.
 2. **Inyección de Modelos GLTF/GLB**: Reemplazar y enriquecer la infraestructura harcodeada del entorno con modelos CAD o GLB externos (sillas fotorrealistas, tazas lofi, etc). La estructura del *KnowledgeObject* ya está lista para anclarse encima de ellos.
@@ -70,7 +141,7 @@ Cuando el usuario envía el formulario con el PDF, se ejecuta este pipeline crí
 
 ---
 
-## 🛠 6. Cambios y Modificaciones Restantes para el Siguiente Sprint
+## 🛠 7. Cambios y Modificaciones Restantes para el Siguiente Sprint
 
 Para lograr los puntos del Roadmap anterior, se deben ejecutar los siguientes cambios en la infraestructura de la app:
 

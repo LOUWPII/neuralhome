@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import PalaceView from './pages/PalaceView';
+import StudyToolkitView from './pages/StudyToolkitView';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 function App() {
@@ -21,6 +22,10 @@ function App() {
             }
           />
           <Route path="/palace/:id" element={<ProtectedRoute><PalaceView /></ProtectedRoute>} />
+          <Route
+            path="/study/:palaceId/:conceptId"
+            element={<ProtectedRoute><StudyToolkitView /></ProtectedRoute>}
+          />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

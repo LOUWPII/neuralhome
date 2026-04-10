@@ -179,10 +179,10 @@ async def delete_palace(
         # 3. Explicitly delete child concepts FIRST.
         # This prevents a known Supabase RLS bug where ON DELETE CASCADE fails
         # because the parent row's visibility changes mid-transaction.
-        supabase.table("concepts").delete().eq("palace_id", palace_id).execute()
+        del_concepts = supabase.table("concepts").delete().eq("palace_id", palace_id).execute()
 
         # 4. Now delete the parent palace
-        supabase.table("palaces").delete().eq("id", palace_id).eq("user_id", user_id).execute()
+        del_palace = supabase.table("palaces").delete().eq("id", palace_id).eq("user_id", user_id).execute()
 
         # 5. Final manual verification
         check = supabase.table("palaces").select("id").eq("id", palace_id).execute()

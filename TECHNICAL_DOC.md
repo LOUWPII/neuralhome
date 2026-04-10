@@ -1,4 +1,4 @@
-# NeuralHome: Documentación Técnica y Arquitectura (V1.1)
+# NeuralHome: Documentación Técnica y Arquitectura (V1.2)
 
 ## 📌 1. Visión General del Proyecto
 **NeuralHome** es una aplicación innovadora de "Palacio Mental 3D" (Mind Palace) que transforma documentos de estudio (PDFs) estructurados y aburridos en un entorno espacial interactivo en 3D. 
@@ -11,20 +11,22 @@ El sistema utiliza **RAG (Retrieval-Augmented Generation)** combinado con motore
 
 La aplicación sigue una arquitectura cliente-servidor estrictamente desacoplada usando REST APIs y validación por JWT:
 
-### 🖥 Frontend (Cliente 3D)
+### 🖥 Frontend (Cliente 3D & Estudio)
 - **Framework Core**: React 18 + Vite.
-- **Renderizado 3D**: `Three.js` implementado de forma declarativa mediante `@react-three/fiber` y `@react-three/drei`.
-- **Navegación & Estado**: `react-router-dom` y React Hooks.
-- **Autenticación & DB**: SDK de Supabase JS (`@supabase/supabase-js`).
-- **Estilos**: Vanilla CSS puro (`index.css`) con variables CSS modernas y animaciones glassmorfismo.
+- **Renderizado 3D**: `Three.js` vía `@react-three/fiber` y `@react-three/drei`.
+- **Navegación**: `react-router-dom` con rutas protegidas.
+- **Autenticación**: Supabase Auth con soporte para **preferencias de idioma (ES/EN)** en `user_metadata`.
+- **Vistas Especializadas**: 
+  - `PalaceView`: Exploración inmersiva en primera persona (FPS).
+  - `StudyToolkitView`: Interfaz de estudio *split-screen* (Chat Socrático + Miniatura 3D).
 
 ### ⚙️ Backend (API Inteligente)
 - **Framework Core**: `FastAPI` (Python 3.10+) ejecutado por Uvicorn (`app.main`).
 - **Lectura de PDF**: `PyMuPDF` (`fitz`), escogido por su velocidad y eficiencia en memoria.
-- **Motor de Embeddings (Local)**: 'BAAI/bge-small-en-v1.5' operando en hugging face
-- **Motor LLM (Nube)**: `Groq` API (compatible con OpenAI Wrapper) utilizando:
-  - `llama-3.1-8b-instant`: Para chat en tiempo real rápido (Neural Architect).
-  - `llama-3.3-70b-versatile`: Para el procesamiento profundo (mapeo lógico 1-a-1 de conceptos a anclas espaciales).
+- **IA Generativa (Groq)**:
+  - `llama-3.1-8b-instant`: Chat conversacional socrático (latencia < 200ms).
+  - `llama-3.3-70b-versatile`: Extracción de conceptos y mapeo espacial 1-a-1.
+- **Embeddings**: 'BAAI/bge-small-en-v1.5' (HuggingFace local).
 - **Control de Acceso**: Inyección de dependencias de FastAPI verificando los JWT headers (`SupabaseDep`).
 
 ### 🗄 Base de Datos y Seguridad (Supabase/PostgreSQL)
@@ -52,6 +54,12 @@ Cuando el usuario envía el formulario con el PDF, se ejecuta este pipeline crí
 - Dinámicamente selecciona el diseño de la habitación (Ej. `neon_dev` o `silicon_valley`).
 - Despliega objetos interactivos invisibles con iluminaciones y etiquetas de "Feynman Summary" que flotan en las posiciones fijas (`roomAnchors.js`) donde el modelo lógico del Backend decidió engancharlos.
 
+### D. Modo Estudio Inmersivo (Socratic Chat)
+Al hacer clic en un objeto, el sistema transiciona a una vista de estudio:
+1. **Frontend**: Carga `StudyToolkitView` con el ID del concepto.
+2. **Backend**: Recupera el `chunk_text` (contexto) y el idioma del usuario.
+3. **LLM**: El tutor socrático genera preguntas, pistas o explicaciones basadas en el contexto y el idioma preferido.
+
 ---
 
 ## 🚨 4. Correcciones y Bugs Críticos Resueltos en Sprint 1
@@ -60,6 +68,7 @@ Cuando el usuario envía el formulario con el PDF, se ejecuta este pipeline crí
 3. **Ghost Deletion (RLS Cascade)**: Se parcheó un conocido bug de Postgres vía PostgREST, implementando una eliminación manual por fases en el backend (`DELETE /palace/{id}`) borrando primero hijos y luego padres independientemente.
 
 ---
+
 
 ## ✨ 5. Mejoras de UI/UX — Sprint 2 (Landing Page)
 
@@ -132,12 +141,52 @@ El efecto de partículas originalmente estaba scoped solo a la sección `<sectio
 
 ---
 
-## 🚀 6. Próximos Pasos & Roadmap (Sprints 3+)
+## ✨ 4. Logros Recientes — Sprint 3 (Socratic Toolkit)
 
-1. **Socratic Study Toolkit**: Al dar *click* real en los objetos holográficos 3D, se abrirá un chat socrático lateral. Se inyectará el contexto y el *embedding vec* específico de ese objeto para charlar con la IA solo sobre ese concepto concreto.
+Se ha completado la integración del **Tutor Socrático Inmersivo**, elevando la aplicación de una herramienta de visualización a una plataforma de aprendizaje activo.
+
+### 4.1 Panel de Estudio Split-Screen
+**Archivo**: `frontend/src/pages/StudyToolkitView.jsx`
+- **Diseño 40/60**: Panel de chat izquierdo (vidrio esmerilado) y visualización 3D derecha.
+- **Miniatura 3D (`ConceptMiniature.jsx`)**: Representación visual abstracta e interactiva que flota para anclar la memoria visual mientras se chatea.
+- **Resumen Feynman**: Acordeón integrado para lectura rápida de la síntesis del concepto.
+
+### 4.2 Lógica de Tutoría Socrática
+**Archivo**: `backend/app/services/llm_service.py`
+- **Estrategia de 3 Fases**:
+  1. *Fase 1*: Solo preguntas abiertas.
+  2. *Fase 2*: Preguntas + pistas espaciales (referenciando el objeto en el palacio).
+  3. *Fase 3*: Preguntas + explicaciones breves tras fallos repetidos.
+- **Detección de Fatiga**: El modelo simplifica el lenguaje si detecta frustración del usuario.
+
+### 4.3 Internacionalización Dinámica
+- El sistema ahora solicita el idioma preferido (**Español/Inglés**) al crear la cuenta.
+- El chatbot adapta estrictamente su respuesta al idioma seleccionado por el usuario, eliminando mezclas lingüísticas indeseadas.
+
+### 4.4 Mejoras UX de Navegación
+- **Auto-Lock 3D**: Al entrar a una habitación, el puntero se bloquea automáticamente en el entorno 3D, eliminando clics innecesarios.
+- **Controles Duales**: Soporte simultáneo para `WASD` y `Flechas de Dirección`.
+
+---
+
+## 🚀 6. Próximos Pasos & Roadmap (Sprints 3-Parte 2)
+
+1. **Socratic Study Toolkit**: Al dar *click* real en los objetos holográficos 3D, se abrirá el socratic chat. Inyectando el *embedding vec* específico de ese objeto para charlar con la IA solo sobre ese concepto concreto.
 2. **Inyección de Modelos GLTF/GLB**: Reemplazar y enriquecer la infraestructura harcodeada del entorno con modelos CAD o GLB externos (sillas fotorrealistas, tazas lofi, etc). La estructura del *KnowledgeObject* ya está lista para anclarse encima de ellos.
 3. **"Upload Photo to Room"**: Extender la creación de habitaciones implementando un modelo LLM con Visión que analice fotos de la vida real (ej. el cuarto real del usuario) e infiera colores/entornos, re-generando automáticamente las anclas.
 4. **Persistencia del Estado del Knowledge**: Añadir un indicador visual semáforo (ej. Rojo/Amarillo/Verde) a los conceptos según el progreso en el chat Socrático del usuario (midiendo su asimilación del tema).
+5. **Gamificación del Dominio**:
+   - Implementar un sistema de calificación (0-100%) basado en el asimilamiento detectado por el tutor socrático.
+   - Cambiar el color/aura del objeto en el palacio 3D (El objeto se va volviendo a escala de grises a medida de que el usuario no practique el concepto o falle demasiado al responder las preguntas del tutor socrático).
+6. **Multi-Model Assets**: Reemplazar hitboxes básicos por modelos GLTF realistas (muebles, gadgets, arte) para mayor inmersión.
+
+---
+
+## 🛠 6. Estándares de Desarrollo
+- **Backend**: FastAPI con inyección de dependencias `SupabaseDep`.
+- **Frontend**: Componentes funcionales, Vanilla CSS, R3F para la capa espacial.
+- **Git**: Flujo de ramas `feat/name` y `fix/name`.
+- **Estética**: Prioridad absoluta al Glassmorphism, Neones y Glow effects.
 
 ---
 

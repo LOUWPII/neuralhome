@@ -188,29 +188,29 @@ export default function RoomCreationModal({ isOpen, onClose }) {
 
                         {/* RIGHT — CONFIGURATION */}
                         <div style={{ flex: '1', padding: '2rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
-                            <h2 style={{ fontSize: '1.25rem', color: 'var(--text-main)', margin: 0 }}>Room Blueprint</h2>
+                            <h2 style={{ fontSize: '1.25rem', color: 'var(--text-main)', margin: 0 }}>New Room</h2>
 
                             {error && <div style={{ color: '#f87171', background: 'rgba(239,68,68,0.1)', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '0.875rem' }}>{error}</div>}
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                 <div>
-                                    <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Room Title *</label>
+                                    <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Room Title:</label>
                                     <input className="input-field" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Advanced Calculus" />
                                 </div>
                                 <div>
-                                    <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Subject</label>
+                                    <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Subject:</label>
                                     <input className="input-field" value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Mathematics" />
                                 </div>
                             </div>
 
                             <div>
-                                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Study Objectives</label>
+                                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Study Objectives:</label>
                                 <input className="input-field" value={objectives} onChange={e => setObjectives(e.target.value)} placeholder="e.g. Master integration techniques" />
                             </div>
 
                             {/* ROOM THEME SELECTOR */}
                             <div>
-                                <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Choose Room Environment</label>
+                                <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Choose Room Environment:</label>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                                     {ROOM_THEMES.map(theme => (
                                         <div
@@ -271,7 +271,7 @@ export default function RoomCreationModal({ isOpen, onClose }) {
                                 style={{ marginTop: 'auto', width: '100%', opacity: (file && title) ? 1 : 0.45, pointerEvents: (file && title) ? 'auto' : 'none' }}
                                 onClick={handleUpload}
                             >
-                                Construct Room & Inject Knowledge
+                                Construct the New Room
                             </button>
                         </div>
                     </>

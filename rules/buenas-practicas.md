@@ -14,6 +14,8 @@ Modularidad Radical: Cada Caso de Uso (CU) debe vivir en su propio módulo. No m
 
 Contrato JSON Primero: Antes de crear cualquier función de integración, verifica que el JSON respete el esquema definido en el "Contrato de Datos Principal".
 
+Internacionalización (i18n): Todos los componentes de IA y UI deben respetar la preferencia de idioma del usuario almacenada en `AuthContext`. No mezclar idiomas.
+
 Zero-Trust UI: Asume que el motor 3D puede fallar. Siempre incluye placeholders y fallbacks visuales.
 
 3. Estándares Técnicos
@@ -23,6 +25,8 @@ Frontend: React + React Three Fiber. Usa componentes funcionales y Hooks para el
 Backend: FastAPI con tipado estricto (Pydantic).
 
 Persistencia: Supabase para Auth y tablas relacionales de retención.
+
+Controles Inmersivos: Todas las vistas 3D deben implementar `PointerLockControls` con auto-lock y soporte dual (`WASD` + `Arrows`).
 
 4. Gestión de Skills
 

@@ -97,20 +97,52 @@ Return ONLY a valid JSON object — no markdown, no explanation:
 }}
 """
 
-CHAT_SYSTEM_PROMPT = """
-You are a Socratic learning assistant inside a 3D Mind Palace called NeuralHome.
-The user is studying the concept: "{concept_label}".
+CHAT_SYSTEM_PROMPT = """\
+You are a Socratic Tutor acting as the user's inner voice inside a 3D memory palace called NeuralHome.
+The user is studying the concept anchored to the object: "{concept_label}" in the palace.
 
-Context from their study material:
+SPATIAL CONTEXT — always reference this object/location when relevant:
+  Object: {anchor_label}
+  Room Theme: {theme}
+
+KNOWLEDGE SOURCE — strictly ground your questions and hints in this excerpt:
 ---
 {context}
 ---
 
-Your role:
-- Help the user deeply understand this concept using the Socratic method
-- Answer questions clearly and concisely
-- Ask thought-provoking follow-up questions
-- Keep responses to 3-5 sentences maximum unless a detailed explanation is needed
+LANGUAGE:
+{language_directive}
+Do NOT mix languages. Do NOT translate your response. Maintain the chosen language throughout.
+
+GOAL:
+Guide the user to deep understanding through questions, while reinforcing visual/spatial memory.
+Do NOT invent facts outside the knowledge source. If asked something outside the excerpt, redirect with a question.
+
+STYLE:
+- Calm, patient, slightly challenging.
+- Do not lecture.
+- Prefer questions over answers.
+- Correct mistakes indirectly (ask "What if…?" or "Are you sure that…?").
+- Keep responses concise: 2–4 sentences max unless a Phase 3 explanation is needed.
+
+3 PHASES — escalate when the user struggles repeatedly (2+ failed attempts):
+  Phase 1 [default]: Ask ONLY open-ended questions. No hints, no answers.
+  Phase 2 [struggling]: Questions + brief spatial or conceptual hints anchored to the object.
+  Phase 3 [repeated failure]: Questions + short, focused explanations (max 3 sentences). Still end with a question.
+
+SPATIAL MEMORY RULE:
+When giving a hint or explanation, reference the physical object in the palace.
+Example: "Think about what '{anchor_label}' represents in this space — what does that suggest about {concept_label}?"
+
+FATIGUE DETECTION:
+If the user expresses frustration, confusion, or repeats failed answers:
+  - Simplify your language.
+  - Break down into a smaller sub-question.
+  - Give a gentle hint tied to the object's visual.
+
+CONSTRAINT:
+Do NOT give the full answer unless the user has failed 3+ times AND explicitly asks for it.
+Always end your response with a question.
 """
 
 
@@ -172,17 +204,32 @@ async def extract_palace_from_chunks(combined_text: str, theme: str = "neon_dev"
 
 async def chat_about_concept(
     concept_label: str,
+    anchor_label: str,
+    theme: str,
     retrieved_chunks: list[str],
     user_message: str,
     history: list[dict] | None = None,
+    language: str = "en",
 ) -> str:
     """
-    Socratic chat about a specific concept using the fast 8B model (or 70B if deep reasoning needed).
+    Socratic tutor chat grounded in a specific concept's RAG chunk.
+    Uses the 3-phase Socratic method with spatial memory anchoring.
+    Language: 'en' = English, 'es' = Spanish.
     """
     context = "\n\n".join(retrieved_chunks)
+
+    language_directive = (
+        "You MUST respond exclusively in Spanish (Español). Every word must be in Spanish."
+        if language == "es"
+        else "You MUST respond exclusively in English. Every word must be in English."
+    )
+
     system = CHAT_SYSTEM_PROMPT.format(
         concept_label=concept_label,
+        anchor_label=anchor_label,
+        theme=theme,
         context=context,
+        language_directive=language_directive,
     )
 
     messages = [{"role": "system", "content": system}]
@@ -191,9 +238,10 @@ async def chat_about_concept(
     messages.append({"role": "user", "content": user_message})
 
     response = _client.chat.completions.create(
-        model=_ARCHITECT_MODEL, # Socratic chat can be fast
+        model=_ARCHITECT_MODEL,  # Socratic chat uses fast 8B for low latency
         messages=messages,
-        temperature=0.7,
+        temperature=0.65,        # Slightly lower than architect → more consistent pedagogy
         max_tokens=512,
     )
     return response.choices[0].message.content
+

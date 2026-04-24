@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.endpoints import ingest
+from app.api.endpoints import chat
 
 app = FastAPI(
     title=settings.project_name,
@@ -27,3 +28,4 @@ async def health_check():
 
 # Router inclusion
 app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
+app.include_router(chat.router,   prefix="/api/chat",   tags=["chat"])

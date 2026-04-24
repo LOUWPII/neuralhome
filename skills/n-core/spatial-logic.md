@@ -26,8 +26,13 @@ entropy: Nivel de degradación visual (0.0 a 1.0).
 
 concept: Concepto asociado al objeto
 
-Lógica de Navegación
+Lógica de Navegación 3D
 
-Modo Inspección: Cámara orbital alrededor del objeto.
+Pointer Lock (Inmersión Inmediata): Al montar el componente de navegación (PalaceView), el puntero debe bloquearse automáticamente tras un breve delay (120ms) para sumergir al usuario sin clics extra.
 
-Modo Caminata: Bloqueo de eje Y (gravedad simulada).
+Esquema de Controles Duales:
+- Movimiento: Soporte simultáneo para WASD y Teclas de Dirección (Arrows).
+- Movimiento Vertical: Bloqueo de eje Y a altura de ojo humano (1.7m) para simular caminata natural (Walking Mode).
+- Inspección: Click para transicionar al modo Socratic Study (Toolkit View).
+
+Modo Inspección: Cámara orbital dedicada en la vista de miniatura del Toolkit.

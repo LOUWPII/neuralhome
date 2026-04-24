@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Canvas } from '@react-three/fiber';
@@ -17,25 +17,40 @@ export default function PalaceView() {
 
     useEffect(() => {
         async function loadPalaceData() {
-            const { data: palaceData } = await supabase
-                .from('palaces')
-                .select('*')
-                .eq('id', id)
-                .single();
-
-            if (palaceData) {
-                setPalace(palaceData);
-                const { data: conceptData } = await supabase
-                    .from('concepts')
+            try {
+                const { data: palaceData, error: palaceError } = await supabase
+                    .from('palaces')
                     .select('*')
-                    .eq('palace_id', id);
+                    .eq('id', id)
+                    .single();
 
-                if (conceptData) setConcepts(conceptData);
+                if (palaceError) throw palaceError;
+
+                if (palaceData) {
+                    setPalace(palaceData);
+                    const { data: conceptData, error: conceptError } = await supabase
+                        .from('concepts')
+                        .select('*')
+                        .eq('palace_id', id);
+
+                    if (conceptError) throw conceptError;
+                    if (conceptData) setConcepts(conceptData);
+                }
+            } catch (err) {
+                console.error("Error loading palace:", err);
+                setPalace(null); // Force not found state
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         }
         loadPalaceData();
     }, [id]);
+
+    // Navigate to the full split-screen Study Toolkit instead of an inline overlay
+    const handleSelectConcept = useCallback((concept) => {
+        document.body.style.cursor = 'auto';
+        navigate(`/study/${id}/${concept.id}`);
+    }, [navigate, id]);
 
     if (loading) {
         return (
@@ -82,17 +97,23 @@ export default function PalaceView() {
                         </p>
                     )}
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                        Click Canvas to Explore (WASD to Move) | ESC to Pause
+                        Click an object to enter Study Mode · ESC to pause
                     </p>
                 </div>
             </div>
 
-            {/* R3F Canvas */}
+            {/* R3F Canvas — pointer-events stay enabled so the user keeps control */}
             <Canvas camera={{ fov: 75, near: 0.1, far: 200, position: [0, 1.8, 8] }} shadows>
                 <Physics gravity={[0, -9.8, 0]}>
                     <RoomEnvironment theme={theme} />
                     {concepts.map((concept, index) => (
-                        <KnowledgeObject key={concept.id} concept={concept} index={index} theme={theme} />
+                        <KnowledgeObject
+                            key={concept.id}
+                            concept={concept}
+                            index={index}
+                            theme={theme}
+                            onSelect={handleSelectConcept}
+                        />
                     ))}
                     <FirstPersonControls />
                 </Physics>

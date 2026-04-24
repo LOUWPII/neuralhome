@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { getAnchorDisplayPosition } from './roomAnchors';
 
-export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev' }) {
+export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev', onSelect }) {
     const meshRef = useRef();
     const [hovered, setHovered] = useState(false);
 
@@ -33,8 +33,9 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
             {/* Invisible Hitbox for Interactions */}
             <mesh
                 ref={meshRef}
-                onPointerOver={() => setHovered(true)}
-                onPointerOut={() => setHovered(false)}
+                onPointerOver={(e) => { e.stopPropagation(); setHovered(true);  document.body.style.cursor = 'pointer'; }}
+                onPointerOut={()  => { setHovered(false); document.body.style.cursor = 'auto'; }}
+                onClick={(e)      => { e.stopPropagation(); onSelect?.(concept); }}
                 visible={false}
             >
                 <sphereGeometry args={[1.5, 16, 16]} />

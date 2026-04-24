@@ -19,6 +19,7 @@ import { ArrowLeft, Send, Brain, BookOpen, ChevronDown, ClipboardList, CheckSqua
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import StudyToolCard from '../components/StudyToolCard';
+import FeynmanVoiceMentor from '../components/FeynmanVoiceMentor';
 
 const API_BASE = 'http://localhost:8001';
 
@@ -95,6 +96,7 @@ export default function StudyToolkitView() {
 
     /* ui */
     const [feynmanOpen, setFeynmanOpen] = useState(true);
+    const [voiceTutorActive, setVoiceTutorActive] = useState(false);
 
     const bottomRef = useRef(null);
     const inputRef  = useRef(null);
@@ -447,12 +449,27 @@ export default function StudyToolkitView() {
                         
                         <StudyToolCard 
                             title="Feynman Tutor"
-                            description="Learn by explaining. The tutor will guide you to simplify the concept as if teaching a child."
+                            description="Voice-powered learning. Explain concepts out loud and the tutor will guide you."
                             icon={Sparkles}
                             accent={accent}
-                            active={false}
-                            onClick={() => alert("Feynman Tutor coming soon!")}
+                            active={voiceTutorActive}
+                            onClick={() => setVoiceTutorActive(!voiceTutorActive)}
                         />
+
+                        {/* ── Feynman Voice Mentor (inline) ── */}
+                        {voiceTutorActive && (
+                            <div style={{
+                                height: '420px',
+                                animation: 'studyFadeIn 0.3s ease',
+                            }}>
+                                <FeynmanVoiceMentor
+                                    conceptId={conceptId}
+                                    language="es"
+                                    accent={accent}
+                                    onClose={() => setVoiceTutorActive(false)}
+                                />
+                            </div>
+                        )}
 
                         <StudyToolCard 
                             title="Practice Test"

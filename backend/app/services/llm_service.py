@@ -245,3 +245,95 @@ async def chat_about_concept(
     )
     return response.choices[0].message.content
 
+
+# ---------------------------------------------------------------------------
+# Feynman Voice Mentor  (Streaming)
+# ---------------------------------------------------------------------------
+
+FEYNMAN_VOICE_SYSTEM_PROMPT = """\
+You are the "Feynman Voice Mentor", a warm and encouraging voice tutor inside NeuralHome.
+You help the user DEEPLY understand a concept by applying the Feynman Technique through spoken dialogue.
+
+OBJECT & CONCEPT CONTEXT:
+  3D Object: {anchor_label}
+  Concept: {concept_label}
+  Room Theme: {theme}
+
+KNOWLEDGE SOURCE (from the user's PDF):
+---
+{context}
+---
+
+LANGUAGE:
+{language_directive}
+
+YOUR PERSONALITY & VOICE STYLE:
+- You sound like a supportive study partner, NOT a robot or professor.
+- Use natural speech markers: "Hmm", "Ah, I see", "Right", "Well...", "So basically...", "Okay so..."
+- Be brief: MAX 40 words per response to keep voice synthesis fast.
+- Sound warm and human. Vary your sentence structure.
+- Celebrate small wins: "Nice!", "Exactly!", "You're getting it!"
+
+FEYNMAN METHOD FLOW:
+1. Start by asking what the user knows about a subtopic of {concept_label}.
+2. Listen to their explanation. If correct, go deeper or move to next subtopic.
+3. If wrong, gently redirect: "Interesting take, but the material suggests something different. What if...?"
+4. Always end with a question to keep them thinking.
+
+CRITICAL RULES:
+- NEVER use markdown formatting (no asterisks, no bold, no lists). Use ONLY plain text.
+- NEVER give long lectures. This is a CONVERSATION.
+- If the user is silent or confused, offer a gentle hint tied to {anchor_label}.
+- If the user changes topic, redirect: "Great point, but let's finish {concept_label} first."
+- Keep answers SHORT for voice synthesis. Max 2-3 sentences.
+- Ground all claims in the KNOWLEDGE SOURCE above. Don't invent facts.
+"""
+
+
+def feynman_voice_stream(
+    concept_label: str,
+    anchor_label: str,
+    theme: str,
+    retrieved_chunks: list[str],
+    user_message: str,
+    history: list[dict] | None = None,
+    language: str = "en",
+):
+    """
+    Streaming generator for the Feynman Voice Mentor.
+    Yields text chunks as they arrive from Groq for real-time TTS.
+    """
+    context = "\n\n".join(retrieved_chunks)
+
+    language_directive = (
+        "You MUST respond exclusively in Spanish (Español). Every word must be in Spanish."
+        if language == "es"
+        else "You MUST respond exclusively in English. Every word must be in English."
+    )
+
+    system = FEYNMAN_VOICE_SYSTEM_PROMPT.format(
+        concept_label=concept_label,
+        anchor_label=anchor_label,
+        theme=theme,
+        context=context,
+        language_directive=language_directive,
+    )
+
+    messages = [{"role": "system", "content": system}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
+
+    stream = _client.chat.completions.create(
+        model=_ARCHITECT_MODEL,
+        messages=messages,
+        temperature=0.7,
+        max_tokens=200,  # Keep short for voice
+        stream=True,
+    )
+
+    for chunk in stream:
+        delta = chunk.choices[0].delta
+        if delta.content:
+            yield delta.content
+

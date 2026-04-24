@@ -21,13 +21,22 @@ La aplicación sigue una arquitectura cliente-servidor estrictamente desacoplada
   - `StudyToolkitView`: Interfaz de estudio *split-screen* (Chat Socrático + Miniatura 3D).
 
 ### ⚙️ Backend (API Inteligente)
-- **Framework Core**: `FastAPI` (Python 3.10+) ejecutado por Uvicorn (`app.main`).
-- **Lectura de PDF**: `PyMuPDF` (`fitz`), escogido por su velocidad y eficiencia en memoria.
-- **IA Generativa (Groq)**:
-  - `llama-3.1-8b-instant`: Chat conversacional socrático (latencia < 200ms).
-  - `llama-3.3-70b-versatile`: Extracción de conceptos y mapeo espacial 1-a-1.
-- **Embeddings**: 'BAAI/bge-small-en-v1.5' (HuggingFace local).
-- **Control de Acceso**: Inyección de dependencias de FastAPI verificando los JWT headers (`SupabaseDep`).
+El backend de NeuralHome es el "cerebro" del sistema, diseñado para ser asíncrono, de latencia ultrabaja y altamente modular. Está construido con **FastAPI** (Python 3.10+) y se ejecuta sobre **Uvicorn**. La arquitectura se divide en tres capas principales:
+
+1. **Capa de Endpoints (`app/api/endpoints`)**:
+   - Expone rutas RESTful para la creación de palacios, ingesta de PDFs, y chat.
+   - Endpoint destacado: `/api/chat/feynman-voice`. Este endpoint utiliza **Server-Sent Events (SSE)** mediante `StreamingResponse` de FastAPI. Esto permite enviar "tokens" (palabras) generados por el LLM en tiempo real al frontend, reduciendo el Tiempo Hasta el Primer Token (TTFT) a menos de 300ms, lo cual es crítico para que la experiencia de voz se sienta natural y conversacional.
+
+2. **Capa de Servicios Lógicos (`app/services/llm_service.py` y `rag_pipeline.py`)**:
+   - Aquí reside toda la orquestación de IA. Nos comunicamos directamente con la API de **Groq** utilizando modelos de inferencia ultra-rápida (LPU):
+     - `llama-3.1-8b-instant`: Usado para el **Chat Socrático** y el **Feynman Voice Mentor**. Es un modelo ágil, configurado con prompts sistémicos estrictos para forzar respuestas cortas, concisas, sin Markdown (para no confundir al TTS) y socráticas.
+     - `llama-3.3-70b-versatile`: Usado para tareas pesadas de razonamiento, como analizar un PDF completo y decidir de qué forma arquitectónica anclar el conocimiento al palacio 3D (Extracción 1-a-1).
+   - El servicio del Voice Mentor empaqueta los tokens de la IA en estructuras JSON seguras (`data: {"token": "hola"}\n\n`) para que el `EventSource` / `TextDecoder` del frontend no se rompa por saltos de línea imprevistos.
+
+3. **Capa de Datos y Embeddings**:
+   - **Lectura de PDF**: `PyMuPDF` (`fitz`), escogido por su eficiencia al leer documentos complejos y extraer texto limpio.
+   - **Embeddings locales**: Utilizamos la librería `sentence-transformers` con el modelo `BAAI/bge-small-en-v1.5` cargado localmente en el servidor. Esto convierte los párrafos del PDF en vectores matemáticos sin depender de APIs de pago externas.
+   - **Control de Acceso**: Todas las llamadas al backend pasan por un inyector de dependencias (`SupabaseDep`), el cual valida los tokens JWT de Supabase, asegurando que un usuario solo pueda inyectar contexto o consultar conceptos que le pertenecen (`auth.uid()`).
 
 ### 🗄 Base de Datos y Seguridad (Supabase/PostgreSQL)
 - Las tablas clave son `palaces` (habitaciones) y `concepts` (los objetos generados dentro de la habitación).

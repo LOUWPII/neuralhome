@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.endpoints import ingest
 from app.api.endpoints import chat
+from app.api.endpoints import quiz
+from app.api.endpoints import flashcards
 
 app = FastAPI(
     title=settings.project_name,
@@ -29,3 +31,5 @@ async def health_check():
 # Router inclusion
 app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
 app.include_router(chat.router,   prefix="/api/chat",   tags=["chat"])
+app.include_router(quiz.router,   prefix="/api/quiz",   tags=["quiz"])
+app.include_router(flashcards.router, prefix="/api/flashcards", tags=["flashcards"])

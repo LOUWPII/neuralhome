@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { Stars, Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
+import { usePlane, useBox, useCylinder } from '@react-three/cannon';
 import { ROOM_ANCHORS } from './roomAnchors';
 
 // ─────────────────────────────────────────
@@ -303,6 +304,17 @@ function NeonDevRoom() {
 
     const anchors = ROOM_ANCHORS.neon_dev;
 
+    // ── Physical Boundaries ──
+    // Floor
+    usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0] }));
+    // Ceiling
+    usePlane(() => ({ rotation: [Math.PI / 2, 0, 0], position: [0, 14, 0] }));
+    // Walls (approx 30x30 room for movement)
+    usePlane(() => ({ rotation: [0, 0, 0], position: [0, 0, -20] })); // Back
+    usePlane(() => ({ rotation: [0, Math.PI, 0], position: [0, 0, 20] })); // Front
+    usePlane(() => ({ rotation: [0, Math.PI / 2, 0], position: [-20, 0, 0] })); // Left
+    usePlane(() => ({ rotation: [0, -Math.PI / 2, 0], position: [20, 0, 0] })); // Right
+
     return (
         <>
             <color attach="background" args={['#020010']} />
@@ -384,6 +396,17 @@ function NeonDevRoom() {
 // ─────────────────────────────────────────
 function SiliconValleyRoom() {
     const anchors = ROOM_ANCHORS.silicon_valley;
+
+    // ── Physical Boundaries ──
+    // Floor
+    usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0] }));
+    // Ceiling
+    usePlane(() => ({ rotation: [Math.PI / 2, 0, 0], position: [0, 12, 0] }));
+    // Walls
+    usePlane(() => ({ rotation: [0, 0, 0], position: [0, 0, -22] })); // Back
+    usePlane(() => ({ rotation: [0, Math.PI, 0], position: [0, 0, 22] })); // Front
+    usePlane(() => ({ rotation: [0, Math.PI / 2, 0], position: [-22, 0, 0] })); // Left
+    usePlane(() => ({ rotation: [0, -Math.PI / 2, 0], position: [22, 0, 0] })); // Right
 
     return (
         <>

@@ -16,81 +16,112 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
     const anchorId = concept.anchor_id;
     const position = getAnchorDisplayPosition(theme, anchorId, index);
 
+    // The height from floor to the display offset
+    const height = position[1];
+
     // Gentle float animation — each concept bobs at a unique rate
     useFrame((state) => {
         if (!meshRef.current) return;
         const t = state.clock.getElapsedTime();
-        meshRef.current.position.y = position[1] + Math.sin(t * 1.2 + index * 1.3) * 0.14;
-        if (concept.model_type !== 'sphere') {
-            meshRef.current.rotation.y += 0.007;
-        }
+        // Only animate the label ring, not the hitbox
+        meshRef.current.material.emissiveIntensity = 
+            0.3 + Math.sin(t * 1.5 + index * 1.3) * 0.15;
     });
-
-    const color = hovered ? colors.hover : colors.base;
 
     return (
         <group position={position}>
-            {/* Invisible Hitbox for Interactions */}
+            {/* 
+                INVISIBLE hitbox cylinder stretching from the physical object 
+                up to the label. Completely invisible — no wireframe, no material.
+                It only serves as a click/hover target.
+            */}
             <mesh
-                ref={meshRef}
+                position={[0, -height / 2, 0]}
                 onPointerOver={(e) => { e.stopPropagation(); setHovered(true);  document.body.style.cursor = 'pointer'; }}
-                onPointerOut={()  => { setHovered(false); document.body.style.cursor = 'auto'; }}
+                onPointerOut={(e)  => { e.stopPropagation(); setHovered(false); document.body.style.cursor = 'auto'; }}
                 onClick={(e)      => { e.stopPropagation(); onSelect?.(concept); }}
                 visible={false}
             >
-                <sphereGeometry args={[1.5, 16, 16]} />
+                <cylinderGeometry args={[2.5, 2.5, height + 1, 8]} />
                 <meshBasicMaterial transparent opacity={0} />
             </mesh>
 
-            {/* Subtle glow indicating active concept */}
-            <pointLight intensity={hovered ? 2 : 0.8} distance={hovered ? 6 : 4} color={hovered ? colors.hover : colors.emissive} />
+            {/* 
+                GLOW LIGHT — Only activates on hover.
+                Positioned at the physical object (floor level) to illuminate it.
+            */}
+            <pointLight 
+                position={[0, -height + 1, 0]}
+                intensity={hovered ? 12 : 0} 
+                distance={hovered ? 10 : 0} 
+                color={colors.hover} 
+            />
+            <pointLight 
+                position={[0, -height + 3, 2]}
+                intensity={hovered ? 8 : 0} 
+                distance={hovered ? 8 : 0} 
+                color={colors.hover} 
+            />
+
+            {/* Ambient indicator light (subtle, always on) */}
+            <pointLight 
+                position={[0, -height + 2, 0]}
+                intensity={0.8} 
+                distance={4} 
+                color={colors.emissive} 
+            />
             
-            {/* Pulsing ring indicator */}
-            <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, -0.2, 0]}>
-                <ringGeometry args={[0.4, 0.45, 32]} />
-                <meshBasicMaterial color={colors.emissive} transparent opacity={hovered ? 0.8 : 0.3} />
+            {/* Pulsing ring on the floor near the object */}
+            <mesh ref={meshRef} rotation={[-Math.PI/2, 0, 0]} position={[0, -height + 0.05, 0]}>
+                <ringGeometry args={[1.8, 2.0, 32]} />
+                <meshStandardMaterial 
+                    color={colors.emissive} 
+                    emissive={colors.emissive}
+                    emissiveIntensity={hovered ? 1.5 : 0.3}
+                    transparent 
+                    opacity={hovered ? 0.9 : 0.25} 
+                />
             </mesh>
 
-            {/* Label — Always visible hovering over the physical object */}
-            <Html position={[0, 0, 0]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
+            {/* Label — positioned just above the physical object */}
+            <Html position={[0, -height + 3.5, 0]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
                 <div style={{
                     background: hovered
-                        ? (theme === 'silicon_valley' ? 'rgba(10,22,48,0.97)' : 'rgba(5,0,16,0.97)')
-                        : 'rgba(0,0,0,0.45)',
-                    border: `1px solid ${hovered ? colors.outline : 'rgba(255,255,255,0.12)'}`,
-                    padding: hovered ? '7px 13px' : '3px 9px',
-                    borderRadius: '7px',
-                    color: hovered ? 'white' : 'rgba(255,255,255,0.5)',
+                        ? (theme === 'silicon_valley' ? 'rgba(59, 130, 246, 0.95)' : 'rgba(192, 38, 211, 0.95)')
+                        : 'rgba(0,0,0,0.6)',
+                    border: `1px solid ${hovered ? '#fff' : 'rgba(255,255,255,0.15)'}`,
+                    padding: hovered ? '6px 14px' : '4px 8px',
+                    borderRadius: '8px',
+                    color: 'white',
                     fontFamily: "'Inter', sans-serif",
-                    fontWeight: 700,
-                    fontSize: hovered ? '0.78rem' : '0.68rem',
+                    fontWeight: 800,
+                    fontSize: hovered ? '0.8rem' : '0.65rem',
                     whiteSpace: 'nowrap',
                     textTransform: 'uppercase',
-                    letterSpacing: '1.2px',
-                    boxShadow: hovered ? `0 0 18px ${colors.outline}66` : 'none',
+                    letterSpacing: '1px',
+                    boxShadow: hovered ? `0 0 20px ${colors.outline}` : 'none',
                     transition: 'all 0.2s ease',
                 }}>
                     {concept.label}
                 </div>
             </Html>
 
-            {/* Feynman Summary Card — Appears on hover */}
+            {/* Feynman Summary Card — Appears on hover, just above the label */}
             {hovered && concept.feynman_summary && (
-                <Html position={[0, 1.2, 0]} center style={{ pointerEvents: 'none', width: '250px', zIndex: 100 }}>
+                <Html position={[0, -height + 5, 0]} center style={{ pointerEvents: 'none', width: '260px', zIndex: 100 }}>
                     <div style={{
                         background: theme === 'silicon_valley' ? 'rgba(10,22,48,0.98)' : 'rgba(5,0,16,0.98)',
                         border: `1px solid ${colors.outline}`,
-                        padding: '12px 14px',
+                        padding: '12px 16px',
                         borderRadius: '10px',
-                        color: 'rgba(255,255,255,0.9)',
+                        color: 'rgba(255,255,255,0.95)',
                         fontFamily: "'Inter', sans-serif",
                         fontSize: '0.75rem',
                         lineHeight: '1.6',
-                        boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 20px ${colors.outline}44`,
+                        boxShadow: `0 8px 32px rgba(0,0,0,0.6), 0 0 25px ${colors.outline}55`,
                         textAlign: 'center',
-                        animation: 'fadeIn 0.2s ease-out',
                     }}>
-                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: colors.hover, marginBottom: '6px', fontWeight: 'bold' }}>
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: colors.hover, marginBottom: '8px', fontWeight: 'bold', letterSpacing: '1px' }}>
                             Feynman Summary
                         </div>
                         {concept.feynman_summary}

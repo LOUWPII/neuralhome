@@ -15,10 +15,10 @@
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, Brain, BookOpen, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Send, Brain, BookOpen, ChevronDown, ClipboardList, CheckSquare, Sparkles, Layers } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import ConceptMiniature from '../3d/ConceptMiniature';
+import StudyToolCard from '../components/StudyToolCard';
 
 const API_BASE = 'http://localhost:8001';
 
@@ -393,94 +393,106 @@ export default function StudyToolkitView() {
                     </div>
                 </div>
 
-                {/* ── RIGHT PANEL: 3D MINIATURE (60%) ────────────────── */}
+                {/* ── RIGHT PANEL: STUDY TOOLKIT (60%) ────────────────── */}
                 <div style={{
                     flex: 1,
                     display: 'flex', flexDirection: 'column',
-                    background: `radial-gradient(ellipse at 50% 40%, ${accent}0d 0%, transparent 70%), var(--bg-dark)`,
+                    background: `radial-gradient(ellipse at 50% 10%, ${accent}08 0%, transparent 70%), var(--bg-dark)`,
                     overflow: 'hidden',
                     position: 'relative',
+                    borderLeft: `1px solid ${accent}11`,
                 }}>
-                    {/* 3D Canvas area */}
-                    <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-                        <ConceptMiniature concept={concept} theme={theme} />
-
-                        {/* Anchor badge */}
-                        <div style={{
-                            position: 'absolute', top: '1rem', left: '50%',
-                            transform: 'translateX(-50%)',
-                            background: 'rgba(0,0,0,0.6)',
-                            border: `1px solid ${accent}44`,
-                            borderRadius: '20px',
-                            padding: '0.3rem 0.9rem',
-                            fontSize: '0.7rem', color: accent,
-                            fontWeight: 600, letterSpacing: '0.8px',
-                            textTransform: 'uppercase',
-                            backdropFilter: 'blur(8px)',
-                            pointerEvents: 'none',
-                        }}>
-                            🧠 {concept.anchor_id?.replace(/_/g, ' ') || 'Knowledge Anchor'}
+                    
+                    {/* ── Status Header: Indicators ───────────────────── */}
+                    <div style={{
+                        padding: '1.5rem 2rem 1rem',
+                        borderBottom: `1px solid ${accent}11`,
+                        background: 'rgba(5,0,14,0.3)',
+                    }}>
+                        <div style={{ display: 'flex', gap: '2rem' }}>
+                            <div style={{ flex: 1 }}>
+                                <p style={{ margin: 0, fontSize: '0.65rem', color: accent, textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 700, marginBottom: '0.4rem' }}>
+                                    EL CONCEPTO ACTUAL
+                                </p>
+                                <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.5px' }}>
+                                    {concept.label}
+                                </h2>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <p style={{ margin: 0, fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1.5px', fontWeight: 700, marginBottom: '0.4rem' }}>
+                                    OBJETO ACTUAL
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: accent, boxShadow: `0 0 8px ${accent}` }} />
+                                    <span style={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>
+                                        {concept.anchor_id?.replace(/_/g, ' ').toUpperCase() || 'KNOWLEDGE ANCHOR'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-
-                        {/* Guide hint */}
-                        <p style={{
-                            position: 'absolute', bottom: '0.8rem', left: 0, right: 0,
-                            textAlign: 'center', margin: 0,
-                            fontSize: '0.7rem', color: 'rgba(255,255,255,0.25)',
-                            pointerEvents: 'none',
-                        }}>
-                            Visual memory anchor · {concept.label}
-                        </p>
                     </div>
 
-                    {/* ── Feynman Summary card ──────────────────────── */}
-                    {concept.feynman_summary && (
-                        <div style={{
-                            flexShrink: 0,
-                            margin: '0 1.2rem 1.2rem',
-                            background: `${accent}0e`,
-                            border: `1px solid ${accent}33`,
-                            borderRadius: '12px',
-                            overflow: 'hidden',
-                        }}>
-                            {/* Accordion header */}
-                            <button
-                                onClick={() => setFeynmanOpen(o => !o)}
-                                style={{
-                                    width: '100%', display: 'flex', alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    padding: '0.65rem 1rem',
-                                    background: 'transparent', border: 'none', cursor: 'pointer',
-                                    color: accent, fontFamily: 'inherit',
-                                }}
-                            >
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px' }}>
-                                    📖 Feynman Summary
-                                </span>
-                                <ChevronDown
-                                    size={15}
-                                    style={{
-                                        transform: feynmanOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                                        transition: 'transform 0.25s',
-                                        color: accent,
-                                    }}
-                                />
-                            </button>
+                    {/* ── Toolkit Listing ────────────────────────────── */}
+                    <div style={{ 
+                        flex: 1, 
+                        overflowY: 'auto', 
+                        padding: '2rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1rem',
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: `${accent}22 transparent`,
+                    }}>
+                        {/* ── TOOL LIST ────────────────────────────────── */}
+                        
+                        <StudyToolCard 
+                            title="Feynman Tutor"
+                            description="Learn by explaining. The tutor will guide you to simplify the concept as if teaching a child."
+                            icon={Sparkles}
+                            accent={accent}
+                            active={false}
+                            onClick={() => alert("Feynman Tutor coming soon!")}
+                        />
 
-                            {/* Collapsible body */}
-                            {feynmanOpen && (
-                                <p style={{
-                                    margin: 0,
-                                    padding: '0 1rem 0.85rem',
-                                    fontSize: '0.85rem',
-                                    color: 'rgba(255,255,255,0.72)',
-                                    lineHeight: 1.7,
-                                }}>
+                        <StudyToolCard 
+                            title="Practice Test"
+                            description="AI-generated quiz based on this concept. Challenge your memory and retention."
+                            icon={ClipboardList}
+                            accent={accent}
+                            active={false}
+                            onClick={() => alert("Practice Test implementation coming soon!")}
+                        />
+
+                        <StudyToolCard 
+                            title="Flashcards"
+                            description="Spaced repetition cards to help you memorize key terms and definitions."
+                            icon={Layers}
+                            accent={accent}
+                            active={false}
+                            onClick={() => alert("Flashcards implementation coming soon!")}
+                        />
+
+                        {/* Feynman Summary Inline (Still available for quick reference if needed, hidden by default now) */}
+                        {feynmanOpen && concept.feynman_summary && (
+                            <div style={{
+                                padding: '1.25rem',
+                                background: `${accent}08`,
+                                border: `1px solid ${accent}22`,
+                                borderRadius: '16px',
+                                marginTop: '-0.5rem',
+                                animation: 'studyFadeIn 0.3s ease',
+                            }}>
+                                <p style={{ margin: 0, fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
                                     {concept.feynman_summary}
                                 </p>
-                            )}
-                        </div>
-                    )}
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ padding: '1.5rem 2rem', opacity: 0.3, fontSize: '0.7rem', textAlign: 'center', borderTop: `1px solid ${accent}11` }}>
+                        NeuralHome Study Toolkit v1.0
+                    </div>
+
                 </div>
             </div>
 

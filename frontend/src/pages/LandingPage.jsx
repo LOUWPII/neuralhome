@@ -126,42 +126,6 @@ export default function LandingPage() {
                     </div>
                 </div>
 
-                {/* Auth Modal Overlay */}
-                {authMode && (
-                    <div style={{
-                        position: 'fixed',
-                        inset: 0,
-                        background: 'rgba(0,0,0,0.8)',
-                        backdropFilter: 'blur(8px)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        zIndex: 50,
-                        padding: '1rem',
-                    }}>
-                        <div style={{ position: 'relative', width: '100%', maxWidth: '400px' }}>
-                            <button
-                                onClick={() => setAuthMode(null)}
-                                style={{
-                                    position: 'absolute',
-                                    top: '-40px',
-                                    right: '0',
-                                    background: 'none',
-                                    border: 'none',
-                                    color: 'white',
-                                    fontSize: '1.5rem',
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                &times;
-                            </button>
-                            <AuthForm
-                                mode={authMode}
-                                onToggleMode={() => setAuthMode(m => m === 'signin' ? 'signup' : 'signin')}
-                            />
-                        </div>
-                    </div>
-                )}
             </section>
 
             {/* ── Decorative 3D assets ───────────────────────────────── */}
@@ -181,6 +145,50 @@ export default function LandingPage() {
             </div>
             
             </main>
+
+            {/* ── Auth Modal Overlay (Moved to top-level for safety) ──── */}
+            {authMode && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    background: 'rgba(0,0,0,0.85)',
+                    backdropFilter: 'blur(10px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999,
+                    padding: '1.5rem',
+                }}>
+                    <div style={{ position: 'relative', width: '100%', maxWidth: '400px' }}>
+                        <button
+                            id="close-auth-modal"
+                            onClick={() => setAuthMode(null)}
+                            style={{
+                                position: 'absolute',
+                                top: '-48px',
+                                right: '0',
+                                background: 'rgba(255,255,255,0.1)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                borderRadius: '50%',
+                                width: '36px',
+                                height: '36px',
+                                color: 'white',
+                                fontSize: '1.2rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
+                            &times;
+                        </button>
+                        <AuthForm
+                            mode={authMode}
+                            onToggleMode={() => setAuthMode(m => m === 'signin' ? 'signup' : 'signin')}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

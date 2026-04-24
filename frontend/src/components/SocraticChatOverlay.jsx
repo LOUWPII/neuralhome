@@ -16,7 +16,7 @@ const API_BASE = 'http://localhost:8001';
 
 /* ─── tiny helpers ─────────────────────────────────────────────────────── */
 const getThemeColor = (theme) =>
-    theme === 'silicon_valley' ? '#3b82f6' : '#a78bfa';
+    theme === 'silicon_valley' ? '#a78bfa' : '#a78bfa';
 
 /* ─── component ─────────────────────────────────────────────────────────── */
 export default function SocraticChatOverlay({ concept, theme = 'neon_dev', onClose }) {

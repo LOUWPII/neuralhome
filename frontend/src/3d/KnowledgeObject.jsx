@@ -8,9 +8,7 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
     const [hovered, setHovered] = useState(false);
 
     // Theme-based color palettes
-    const colors = theme === 'silicon_valley'
-        ? { base: '#3b82f6', hover: '#60a5fa', emissive: '#1d4ed8', outline: '#93c5fd' }
-        : { base: '#c026d3', hover: '#e879f9', emissive: '#7c3aed', outline: '#d946ef' };
+    const colors = { base: '#c026d3', hover: '#e879f9', emissive: '#7c3aed', outline: '#d946ef' };
 
     // Resolve position from anchor ID, fall back to scatter if anchor not found
     const anchorId = concept.anchor_id;
@@ -87,7 +85,7 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
             <Html position={[0, -height + 3.5, 0]} center style={{ pointerEvents: 'none', userSelect: 'none' }}>
                 <div style={{
                     background: hovered
-                        ? (theme === 'silicon_valley' ? 'rgba(59, 130, 246, 0.95)' : 'rgba(192, 38, 211, 0.95)')
+                        ? 'rgba(192, 38, 211, 0.95)'
                         : 'rgba(0,0,0,0.6)',
                     border: `1px solid ${hovered ? '#fff' : 'rgba(255,255,255,0.15)'}`,
                     padding: hovered ? '6px 14px' : '4px 8px',
@@ -110,7 +108,7 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
             {hovered && concept.feynman_summary && (
                 <Html position={[0, -height + 5, 0]} center style={{ pointerEvents: 'none', width: '260px', zIndex: 100 }}>
                     <div style={{
-                        background: theme === 'silicon_valley' ? 'rgba(10,22,48,0.98)' : 'rgba(5,0,16,0.98)',
+                        background: 'rgba(5,0,16,0.98)',
                         border: `1px solid ${colors.outline}`,
                         padding: '12px 16px',
                         borderRadius: '10px',

@@ -3,6 +3,9 @@ from pydantic import BaseModel
 from typing import Optional
 from app.services.rag_pipeline import process_pdf_and_generate_palace
 from app.services.llm_service import architect_chat
+from app.services.vision_service import analyze_room_photo
+from app.services.glb_matcher import match_objects
+from app.core.assets import get_glb_for_type
 from app.api.deps import SupabaseDep
 
 router = APIRouter()
@@ -145,6 +148,145 @@ async def ingest_pdf(
         print(f"[Ingest] Unexpected error: {e}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+@router.post("/photo-pdf")
+async def ingest_photo_pdf(
+    supabase: SupabaseDep,
+    pdf: UploadFile = File(...),
+    photo: UploadFile = File(...),
+    title: str = Form(None),
+    subject: str = Form(None),
+    description: str = Form(None),
+    objectives: str = Form(None),
+    authorization: str = Header(None)
+):
+    """
+    Combined endpoint: Analyzes a room photo for layout and processes a PDF for RAG.
+    Creates a dynamic Mental Palace.
+    """
+    if not pdf.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    
+    # --- 0. Auth ---
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    
+    try:
+        auth_user = supabase.auth.get_user(token)
+        if not auth_user or not auth_user.user:
+            raise HTTPException(status_code=401, detail="Invalid session.")
+        user_id = auth_user.user.id
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Invalid session.")
+
+    try:
+        # ── Step 1: Vision — free-text description of the room ────────────────
+        photo_bytes = await photo.read()
+        room_data = await analyze_room_photo(photo_bytes)
+        # vision_service already clamped positions + ran anti-overlap
+
+        objects = room_data.get("objects", [])
+
+        # ── Step 2: GLB Matching — map raw descriptions to available .glb ─────
+        # This is the dynamic semantic matching step:
+        # "wooden wardrobe" → bookshelf.glb, "leather sofa" → chair.glb, etc.
+        objects = match_objects(objects)
+        print(f"[Ingest] GLB matches: { {o['raw_type']: o['glb_match']['glb_type'] for o in objects} }")
+
+        # ── Step 3: Build dynamic anchors for the RAG LLM ────────────────────
+        # One anchor per detected + matched object — this is the 1:1 concept mapping.
+        dynamic_anchors = []
+        for i, obj in enumerate(objects):
+            glb_type  = obj["glb_match"]["glb_type"]
+            raw_type  = obj.get("raw_type", glb_type)
+            label     = obj.get("label", raw_type)
+            material  = obj.get("material_hint", "unknown")
+            anchor_id = f"dynamic_{glb_type}_{i}"
+            dynamic_anchors.append({
+                "id": anchor_id,
+                "label": label,
+                "semantic_hint": f"A {raw_type} made of {material} — matched to {glb_type} model",
+                "raw_vision_data": obj,
+            })
+
+        # ── Step 4: RAG — process PDF and map concepts to anchors ────────────
+        pdf_bytes = await pdf.read()
+        palace_data = await process_pdf_and_generate_palace(
+            pdf_bytes,
+            theme="dynamic",
+            dynamic_anchors=dynamic_anchors
+        )
+
+        # ── Step 5: Save Palace ───────────────────────────────────────────────
+        final_title = title if title else palace_data.get("title", pdf.filename)
+        palace_resp = supabase.table("palaces").insert({
+            "user_id": user_id,
+            "title": final_title,
+            "subject": subject,
+            "description": description or "Dynamic Palace from Photo",
+            "objectives": objectives,
+            "dynamic_config": room_data.get("room_dimensions", {})
+        }).execute()
+
+        if not palace_resp.data:
+            raise HTTPException(status_code=500, detail="Failed to create palace in DB.")
+
+        palace_db  = palace_resp.data[0]
+        palace_id  = palace_db["id"]
+
+        # ── Step 6: Save Concepts with full vision + GLB metadata ─────────────
+        concepts_to_insert = []
+        anchor_map = {a["id"]: a for a in dynamic_anchors}
+
+        for concept in palace_data.get("concepts", []):
+            anchor_id   = concept.get("anchor_id")
+            anchor_info = anchor_map.get(anchor_id, {})
+            vision_obj  = anchor_info.get("raw_vision_data", {})
+            glb_match   = vision_obj.get("glb_match", {})
+
+            row = {
+                "palace_id":      palace_id,
+                "label":          concept.get("label", "Unknown"),
+                "context":        concept.get("context", ""),
+                "feynman_summary":concept.get("feynman_summary", ""),
+                "chunk_text":     concept.get("chunk_text", ""),
+                "anchor_id":      anchor_id,
+                # Position in real metres (already anti-overlapped by vision_service)
+                "position_x":     vision_obj.get("position", {}).get("x", 0.0),
+                "position_y":     0.0,
+                "position_z":     vision_obj.get("position", {}).get("z", 0.0),
+                # GLB asset — result of semantic matching, NOT a hardcoded rule
+                "glb_model":      glb_match.get("glb_file", "desk.glb"),
+                "hex_color":      vision_obj.get("color", "#c8b89a"),
+                "material_props": {
+                    "material":    vision_obj.get("material_hint", "wood"),
+                    "raw_type":    vision_obj.get("raw_type", ""),
+                    "glb_type":    glb_match.get("glb_type", "desk"),
+                    "confidence":  glb_match.get("confidence", 0.5),
+                    "dimensions":  vision_obj.get("dimensions", {"width": 1.0, "height": 1.0, "depth": 1.0}),
+                }
+            }
+
+            embedding = concept.get("embedding")
+            if embedding:
+                row["embedding"] = str(embedding)
+
+            concepts_to_insert.append(row)
+
+        if concepts_to_insert:
+            supabase.table("concepts").insert(concepts_to_insert).execute()
+
+        return {"status": "success", "id": palace_id, "title": final_title}
+
+    except Exception as e:
+        import traceback
+        print(f"[Ingest] Photo-PDF Error: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.delete("/palace/{palace_id}")
 async def delete_palace(

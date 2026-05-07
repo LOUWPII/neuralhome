@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { Stars, Html } from '@react-three/drei';
+import React, { useRef, Suspense } from 'react';
+import { Stars, Html, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { usePlane, useBox, useCylinder } from '@react-three/cannon';
 import { ROOM_ANCHORS } from './roomAnchors';
@@ -481,9 +481,260 @@ function SiliconValleyRoom() {
 }
 
 // ─────────────────────────────────────────
+// TEMPLATE 3: Dynamic Room (from photo)
+// ─────────────────────────────────────────
+
+import * as THREE from 'three';
+
+/**
+ * Loads a real .glb model and scales it per-axis to match vision AI dimensions.
+ * Uses Box3 to measure the raw GLB, then applies independent x/y/z scale factors.
+ */
+function GLBFurniture({ glbPath, color = '#8B4513', position, type, dimensions, isHovered, isSelected }) {
+    const { scene } = useGLTF(glbPath);
+
+    const cloned = React.useMemo(() => {
+        const c = scene.clone(true);
+
+        // Keep original GLB materials — only boost emissive on hover/select
+        c.traverse((child) => {
+            if (child.isMesh && child.material) {
+                child.material = child.material.clone();
+                child.material.emissiveIntensity = isHovered || isSelected ? 0.7 : 0.05;
+                if (isHovered || isSelected) {
+                    child.material.emissive = new THREE.Color(isSelected ? '#22d3ee' : '#ffffff');
+                }
+            }
+        });
+
+        // Measure raw GLB size
+        const rawBox = new THREE.Box3().setFromObject(c);
+        const rawSize = rawBox.getSize(new THREE.Vector3());
+
+        if (rawSize.x > 0 && rawSize.y > 0 && rawSize.z > 0) {
+            // Target dimensions: use vision-estimated dims, else fallback per type
+            const fallback = TYPE_DEFAULTS[type] || { w: 1.0, h: 1.0, d: 1.0 };
+            const tW = dimensions?.width  || fallback.w;
+            const tH = dimensions?.height || fallback.h;
+            const tD = dimensions?.depth  || fallback.d;
+
+            // Per-axis scale so the object exactly matches real-world size
+            c.scale.set(
+                tW / rawSize.x,
+                tH / rawSize.y,
+                tD / rawSize.z
+            );
+
+            // Re-seat on floor (y=0)
+            const scaledBox = new THREE.Box3().setFromObject(c);
+            c.position.y = -scaledBox.min.y;
+        }
+
+        return c;
+    }, [scene, type, dimensions, isHovered, isSelected]);
+
+    const lightIntensity = isHovered || isSelected ? 3 : 0;
+    const highlightColor = isSelected ? '#22d3ee' : '#ffffff';
+
+    return (
+        <group position={[position.x || 0, 0, position.z || 0]}>
+            <primitive object={cloned} />
+            {(isHovered || isSelected) && (
+                <pointLight position={[0, 1.0, 0]} intensity={lightIntensity} color={highlightColor} distance={3} />
+            )}
+        </group>
+    );
+}
+
+/**
+ * Fallback box furniture for types without a .glb model.
+ * Uses per-axis dimensions from vision AI or type defaults.
+ */
+function BoxFurniture({ type = 'desk', color = '#8B4513', position, dimensions, isHovered, isSelected }) {
+    const fallback = TYPE_DEFAULTS[type] || { w: 1.0, h: 1.0, d: 1.0 };
+    const w = dimensions?.width  || fallback.w;
+    const h = dimensions?.height || fallback.h;
+    const d = dimensions?.depth  || fallback.d;
+    const yOff = h / 2;
+    const emissiveColor = isSelected ? '#22d3ee' : (isHovered ? '#ffffff' : color);
+
+    return (
+        <group position={[position.x || 0, 0, position.z || 0]}>
+            <mesh position={[0, yOff, 0]}>
+                <boxGeometry args={[w, h, d]} />
+                <meshStandardMaterial
+                    color={color}
+                    emissive={emissiveColor}
+                    emissiveIntensity={isHovered || isSelected ? 0.5 : 0.06}
+                    roughness={0.7}
+                />
+            </mesh>
+            {(isHovered || isSelected) && (
+                <pointLight position={[0, yOff + 0.5, 0]} intensity={3} color={isSelected ? '#22d3ee' : '#ffffff'} distance={3} />
+            )}
+        </group>
+    );
+}
+
+// Map furniture types to their .glb files (matches /public/models/)
+// NOTE: "window" is intentionally excluded — it is architectural (wall-mounted)
+// and its GLB lays flat on the floor, which looks wrong in a dynamic room.
+const GLB_MAP = {
+    bed:       '/models/bed.glb',
+    desk:      '/models/desk.glb',
+    chair:     '/models/chair.glb',
+    bookshelf: '/models/bookshelf.glb',
+    lamp:      '/models/lamp.glb',
+    plant:     '/models/plant.glb',
+};
+
+// Reference bounding boxes per type (w, h, d) in metres — used when vision dims are missing
+const TYPE_DEFAULTS = {
+    bed:       { w: 2.0,  h: 0.55, d: 2.0  },
+    desk:      { w: 1.2,  h: 0.75, d: 0.6  },
+    chair:     { w: 0.6,  h: 0.9,  d: 0.6  },
+    bookshelf: { w: 1.2,  h: 1.8,  d: 0.4  },
+    lamp:      { w: 0.3,  h: 1.5,  d: 0.3  },
+    plant:     { w: 0.5,  h: 0.8,  d: 0.5  },
+};
+
+// DynamicRoom: dimensions come from the roomDimensions prop (palace.dynamic_config).
+// Uses width/depth independently so non-square rooms render correctly.
+function DynamicRoom({ concepts = [], roomDimensions, hoveredConceptId, selectedForSwapId }) {
+    // Sensible defaults — a normal bedroom
+    const roomW  = roomDimensions?.width  || 5;
+    const roomD  = roomDimensions?.depth  || 5;
+    const roomH  = roomDimensions?.height || 2.5;
+    const halfW  = roomW / 2;
+    const halfD  = roomD / 2;
+    const maxHalf = Math.max(halfW, halfD);
+
+    // Physics walls — match the visual room exactly
+    usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0] }));          // floor
+    usePlane(() => ({ rotation: [Math.PI / 2, 0, 0], position: [0, roomH, 0] }));       // ceiling
+    usePlane(() => ({ rotation: [0, 0, 0], position: [0, 0, -halfD] }));                // back wall
+    usePlane(() => ({ rotation: [0, Math.PI, 0], position: [0, 0, halfD] }));           // front wall
+    usePlane(() => ({ rotation: [0, Math.PI / 2, 0], position: [-halfW, 0, 0] }));      // left wall
+    usePlane(() => ({ rotation: [0, -Math.PI / 2, 0], position: [halfW, 0, 0] }));      // right wall
+
+    const accentColor = concepts[0]?.hex_color || '#c8a87a';
+
+    return (
+        <>
+            <color attach="background" args={['#2a1a0a']} />
+            <fog attach="fog" args={['#2a1a0a', maxHalf * 1.5, maxHalf * 5]} />
+
+            {/* ── LIGHTING ── */}
+            <ambientLight intensity={0.7} color="#fff5e6" />
+            <pointLight position={[0, roomH - 0.15, 0]} intensity={4} color="#fffde8" distance={maxHalf * 3} />
+            <directionalLight position={[halfW * 0.5, roomH, -halfD * 0.5]} intensity={1.5} color="#fffde0" castShadow />
+            <pointLight position={[halfW - 0.5, roomH * 0.7, -halfD + 0.5]} intensity={1} color={accentColor} distance={maxHalf * 2} />
+            <pointLight position={[-halfW + 0.5, roomH * 0.7, halfD - 0.5]} intensity={0.6} color="#c8dfff" distance={maxHalf * 2} />
+
+            {/* ── FLOOR ── */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+                <planeGeometry args={[roomW, roomD]} />
+                <meshStandardMaterial color="#7a4f28" roughness={0.82} metalness={0.02} />
+            </mesh>
+            {/* Plank seam lines */}
+            {Array.from({ length: Math.floor(roomD / 1.2) }, (_, i) => (i - Math.floor(roomD / 2.4)) * 1.2).map((z, i) => (
+                <mesh key={`pk-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, z]}>
+                    <planeGeometry args={[roomW, 0.015]} />
+                    <meshStandardMaterial color="#4a2c0e" roughness={1} />
+                </mesh>
+            ))}
+
+            {/* ── CEILING ── */}
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, roomH, 0]}>
+                <planeGeometry args={[roomW, roomD]} />
+                <meshStandardMaterial color="#f2ede4" roughness={1} />
+            </mesh>
+            {/* Ceiling lamp */}
+            <mesh position={[0, roomH - 0.05, 0]}>
+                <cylinderGeometry args={[0.18, 0.12, 0.1, 16]} />
+                <meshStandardMaterial color="#f5f0e8" emissive="#fffde0" emissiveIntensity={2} />
+            </mesh>
+            <mesh position={[0, roomH - 0.25, 0]}>
+                <cylinderGeometry args={[0.01, 0.01, 0.3, 6]} />
+                <meshStandardMaterial color="#333" roughness={1} />
+            </mesh>
+
+            {/* ── WALLS ── */}
+            {/* Back & front walls (width × height) */}
+            <mesh position={[0, roomH / 2, -halfD]} rotation={[0, 0, 0]} receiveShadow>
+                <planeGeometry args={[roomW, roomH]} />
+                <meshStandardMaterial color="#d9cbb8" roughness={0.98} />
+            </mesh>
+            <mesh position={[0, roomH / 2, halfD]} rotation={[0, Math.PI, 0]} receiveShadow>
+                <planeGeometry args={[roomW, roomH]} />
+                <meshStandardMaterial color="#d9cbb8" roughness={0.98} />
+            </mesh>
+            {/* Left & right walls (depth × height) */}
+            <mesh position={[-halfW, roomH / 2, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
+                <planeGeometry args={[roomD, roomH]} />
+                <meshStandardMaterial color="#d9cbb8" roughness={0.98} />
+            </mesh>
+            <mesh position={[halfW, roomH / 2, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
+                <planeGeometry args={[roomD, roomH]} />
+                <meshStandardMaterial color="#d9cbb8" roughness={0.98} />
+            </mesh>
+
+            {/* Baseboard strips */}
+            <mesh position={[0, 0.06, -halfD + 0.01]} rotation={[0, 0, 0]}>
+                <planeGeometry args={[roomW, 0.12]} />
+                <meshStandardMaterial color="#8a6a4a" roughness={0.9} />
+            </mesh>
+            <mesh position={[0, 0.06, halfD - 0.01]} rotation={[0, Math.PI, 0]}>
+                <planeGeometry args={[roomW, 0.12]} />
+                <meshStandardMaterial color="#8a6a4a" roughness={0.9} />
+            </mesh>
+            <mesh position={[-halfW + 0.01, 0.06, 0]} rotation={[0, Math.PI / 2, 0]}>
+                <planeGeometry args={[roomD, 0.12]} />
+                <meshStandardMaterial color="#8a6a4a" roughness={0.9} />
+            </mesh>
+            <mesh position={[halfW - 0.01, 0.06, 0]} rotation={[0, -Math.PI / 2, 0]}>
+                <planeGeometry args={[roomD, 0.12]} />
+                <meshStandardMaterial color="#8a6a4a" roughness={0.9} />
+            </mesh>
+
+            {/* ── FURNITURE ── */}
+            {concepts.map((concept, i) => {
+                // Primary: use the glb_type set by the backend's semantic GLB matcher
+                // Fallback: parse from anchor_id (e.g. "dynamic_bed_0" → "bed")
+                const type = concept.material_props?.glb_type
+                    || concept.anchor_id?.split('_')?.[1]
+                    || 'desk';
+
+                const color      = concept.hex_color || '#c8b89a';
+                const pos        = { x: concept.position_x || 0, z: concept.position_z || 0 };
+                const dimensions = concept.material_props?.dimensions;
+                const glbPath    = GLB_MAP[type];
+
+                const isHovered  = hoveredConceptId === concept.id;
+                const isSelected = selectedForSwapId === concept.id;
+
+                return glbPath ? (
+                    <Suspense key={concept.id || i} fallback={
+                        <BoxFurniture type={type} color={color} position={pos} dimensions={dimensions} isHovered={isHovered} isSelected={isSelected} />
+                    }>
+                        <GLBFurniture glbPath={glbPath} color={color} position={pos} type={type} dimensions={dimensions} isHovered={isHovered} isSelected={isSelected} />
+                    </Suspense>
+                ) : (
+                    <BoxFurniture key={concept.id || i} type={type} color={color} position={pos} dimensions={dimensions} isHovered={isHovered} isSelected={isSelected} />
+                );
+            })}
+        </>
+    );
+}
+
+// ─────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────
-export function RoomEnvironment({ theme = 'neon_dev' }) {
+export function RoomEnvironment({ theme = 'neon_dev', concepts = [], roomDimensions, hoveredConceptId, selectedForSwapId }) {
+    // Default dimensions — a normal bedroom
+    const defaultDims = { width: 5, height: 2.5, depth: 5 };
+    const dims = roomDimensions || defaultDims;
+    if (theme === 'dynamic') return <DynamicRoom concepts={concepts} roomDimensions={dims} hoveredConceptId={hoveredConceptId} selectedForSwapId={selectedForSwapId} />;
     if (theme === 'silicon_valley') return <SiliconValleyRoom />;
     return <NeonDevRoom />;
 }

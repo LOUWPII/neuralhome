@@ -88,7 +88,7 @@ def _find_best_chunk(concept_context: str, chunks: list[str]) -> str:
     return best_chunk
 
 
-async def process_pdf_and_generate_palace(pdf_bytes: bytes, theme: str = "neon_dev") -> dict:
+async def process_pdf_and_generate_palace(pdf_bytes: bytes, theme: str = "neon_dev", dynamic_anchors: list = None) -> dict:
     """
     Full RAG pipeline:
     Returns a palace dict with concepts that include an `embedding` and `chunk_text` field.
@@ -120,10 +120,10 @@ async def process_pdf_and_generate_palace(pdf_bytes: bytes, theme: str = "neon_d
     start_step = time.time()
     summary_text = text[:8000] if len(text) > 8000 else text
     print(f"[RAG] Sending {len(summary_text)} chars to LLM for extraction...")
-    palace_data = await extract_palace_from_chunks(summary_text, theme)
+    palace_data = await extract_palace_from_chunks(summary_text, theme, custom_anchors=dynamic_anchors)
     
     # Enforce strict 1-to-1 mapping limit
-    anchors = ROOM_ANCHORS.get(theme, ROOM_ANCHORS["neon_dev"])
+    anchors = dynamic_anchors if dynamic_anchors else ROOM_ANCHORS.get(theme, ROOM_ANCHORS["neon_dev"])
     concepts = palace_data.get("concepts", [])
     if len(concepts) > len(anchors):
         print(f"[RAG] Warning: LLM extracted {len(concepts)} concepts, but only {len(anchors)} anchors available. Truncating.")

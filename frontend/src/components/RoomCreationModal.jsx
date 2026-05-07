@@ -1,26 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, X, Loader as LoaderIcon, MessageSquare, Send } from 'lucide-react';
+import { UploadCloud, X, Loader as LoaderIcon, MessageSquare, Send, Camera, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
-const ROOM_THEMES = [
-    {
-        id: 'neon_dev',
-        name: 'Neon Dev',
-        emoji: '🌆',
-        description: 'Dark space with glowing magenta & cyan grids. Holographic and futuristic.',
-        preview: 'linear-gradient(135deg, #020010 0%, #1a0040 50%, #0a001a 100%)',
-        accent: '#c026d3',
-    },
-    {
-        id: 'silicon_valley',
-        name: 'Silicon Valley Lab',
-        emoji: '🏢',
-        description: 'Bright, minimal Apple-style office. Clean white floors, studio lighting, server racks.',
-        preview: 'linear-gradient(135deg, #e8f4fd 0%, #c8e8fa 50%, #a0c8f0 100%)',
-        accent: '#3b82f6',
-    },
-];
+
 
 export default function RoomCreationModal({ isOpen, onClose }) {
     const navigate = useNavigate();
@@ -30,6 +13,8 @@ export default function RoomCreationModal({ isOpen, onClose }) {
     const [objectives, setObjectives] = useState('');
     const [selectedTheme, setSelectedTheme] = useState('neon_dev');
     const [file, setFile] = useState(null);
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(null);
 
     const [messages, setMessages] = useState([
         { role: 'assistant', content: "Hello! I'm the Neural Architect. Tell me what you want to study and I'll help you define clear learning objectives and a study roadmap." }
@@ -41,6 +26,7 @@ export default function RoomCreationModal({ isOpen, onClose }) {
     const [progressText, setProgressText] = useState('');
     const [error, setError] = useState(null);
     const fileInputRef = useRef();
+    const photoInputRef = useRef();
 
     if (!isOpen) return null;
 
@@ -79,31 +65,42 @@ export default function RoomCreationModal({ isOpen, onClose }) {
 
     const handleUpload = async () => {
         if (!file || !title) {
-            setError('Title and PDF file are required.');
+            setError('Room Title and PDF are mandatory. Photo is optional but recommended for Dynamic Room.');
             return;
         }
         setLoading(true);
         setError(null);
-        setProgressText('Extracting knowledge from PDF...');
+        setProgressText(photoFile ? 'Analyzing your room photo...' : 'Extracting knowledge from PDF...');
 
         try {
             const formData = new FormData();
-            formData.append('file', file);
             formData.append('title', title);
             formData.append('subject', subject);
-            formData.append('description', selectedTheme); // store the theme slug
             formData.append('objectives', objectives);
 
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
 
-            const response = await fetch('http://127.0.0.1:8001/api/ingest/pdf', {
+            let endpoint = 'http://127.0.0.1:8001/api/ingest/pdf';
+
+            if (photoFile) {
+                endpoint = 'http://127.0.0.1:8001/api/ingest/photo-pdf';
+                formData.append('photo', photoFile);
+                formData.append('pdf', file);
+                formData.append('description', 'dynamic'); // Set theme to dynamic if photo exists
+            } else {
+                formData.append('file', file);
+                formData.append('description', selectedTheme);
+            }
+
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
                 body: formData,
             });
 
-            setProgressText('Mapping concepts to room...');
+            if (photoFile) setProgressText('Creating your 3D Digital Twin...');
+            else setProgressText('Mapping concepts to room...');
 
             if (!response.ok) {
                 const errorData = await response.json();
@@ -208,62 +205,61 @@ export default function RoomCreationModal({ isOpen, onClose }) {
                                 <input className="input-field" value={objectives} onChange={e => setObjectives(e.target.value)} placeholder="e.g. Master integration techniques" />
                             </div>
 
-                            {/* ROOM THEME SELECTOR */}
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Choose Room Environment:</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                    {ROOM_THEMES.map(theme => (
-                                        <div
-                                            key={theme.id}
-                                            onClick={() => setSelectedTheme(theme.id)}
-                                            style={{
-                                                cursor: 'pointer',
-                                                borderRadius: '12px',
-                                                overflow: 'hidden',
-                                                border: selectedTheme === theme.id ? `2px solid ${theme.accent}` : '2px solid rgba(255,255,255,0.1)',
-                                                transition: 'all 0.2s ease',
-                                                boxShadow: selectedTheme === theme.id ? `0 0 20px ${theme.accent}55` : 'none',
-                                                transform: selectedTheme === theme.id ? 'scale(1.02)' : 'scale(1)',
-                                            }}
-                                        >
-                                            <div style={{
-                                                height: '70px',
-                                                background: theme.preview,
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                fontSize: '2rem'
-                                            }}>
-                                                {theme.emoji}
-                                            </div>
-                                            <div style={{
-                                                padding: '0.75rem',
-                                                background: selectedTheme === theme.id ? `${theme.accent}15` : 'rgba(0,0,0,0.3)'
-                                            }}>
-                                                <p style={{ margin: '0 0 0.25rem', fontWeight: 'bold', fontSize: '0.9rem', color: selectedTheme === theme.id ? theme.accent : 'var(--text-main)' }}>
-                                                    {theme.name}
-                                                </p>
-                                                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                                                    {theme.description}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
 
-                            {/* PDF UPLOAD */}
-                            <div
-                                onClick={() => fileInputRef.current?.click()}
-                                style={{
-                                    border: file ? '1px solid var(--primary-bright)' : '1px dashed rgba(124,58,237,0.4)',
-                                    borderRadius: '10px', padding: '1.25rem', textAlign: 'center', cursor: 'pointer',
-                                    background: file ? 'rgba(124,58,237,0.08)' : 'transparent', transition: 'all 0.3s',
-                                }}
-                            >
-                                <UploadCloud size={28} color="var(--primary-bright)" style={{ marginBottom: '0.5rem' }} />
-                                <p style={{ margin: 0, color: file ? 'var(--text-main)' : 'var(--text-muted)', fontSize: '0.875rem', fontWeight: file ? 'bold' : 'normal' }}>
-                                    {file ? file.name : 'Click to select a PDF source'}
-                                </p>
-                                <input ref={fileInputRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={(e) => setFile(e.target.files[0])} />
+
+                            {/* UPLOADS SECTION */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                {/* PDF UPLOAD */}
+                                <div
+                                    onClick={() => fileInputRef.current?.click()}
+                                    style={{
+                                        border: file ? '1px solid var(--primary-bright)' : '1px dashed rgba(124,58,237,0.4)',
+                                        borderRadius: '10px', padding: '1rem', textAlign: 'center', cursor: 'pointer',
+                                        background: file ? 'rgba(124,58,237,0.08)' : 'transparent', transition: 'all 0.3s',
+                                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100px'
+                                    }}
+                                >
+                                    <FileText size={24} color={file ? "var(--primary-bright)" : "var(--text-muted)"} style={{ marginBottom: '0.5rem' }} />
+                                    <p style={{ margin: 0, color: file ? 'var(--text-main)' : 'var(--text-muted)', fontSize: '0.75rem', fontWeight: file ? 'bold' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
+                                        {file ? file.name : 'Select PDF Source'}
+                                    </p>
+                                    <input ref={fileInputRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={(e) => setFile(e.target.files[0])} />
+                                </div>
+
+                                {/* PHOTO UPLOAD (DYNAMIC ROOM) */}
+                                <div
+                                    onClick={() => photoInputRef.current?.click()}
+                                    style={{
+                                        border: photoFile ? '1px solid #22d3ee' : '1px dashed rgba(34, 211, 238, 0.4)',
+                                        borderRadius: '10px', padding: '1rem', textAlign: 'center', cursor: 'pointer',
+                                        background: photoFile ? 'rgba(34, 211, 238, 0.08)' : 'transparent', transition: 'all 0.3s',
+                                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100px',
+                                        position: 'relative', overflow: 'hidden'
+                                    }}
+                                >
+                                    {photoPreview ? (
+                                        <img src={photoPreview} alt="Preview" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.3 }} />
+                                    ) : (
+                                        <Camera size={24} color={photoFile ? "#22d3ee" : "var(--text-muted)"} style={{ marginBottom: '0.5rem' }} />
+                                    )}
+                                    <p style={{ margin: 0, color: photoFile ? 'var(--text-main)' : 'var(--text-muted)', fontSize: '0.75rem', fontWeight: photoFile ? 'bold' : 'normal', zIndex: 1 }}>
+                                        {photoFile ? 'Photo Captured' : 'Upload Room Photo'}
+                                    </p>
+                                    <input 
+                                        ref={photoInputRef} 
+                                        type="file" 
+                                        accept="image/*" 
+                                        style={{ display: 'none' }} 
+                                        onChange={(e) => {
+                                            const f = e.target.files[0];
+                                            if (f) {
+                                                setPhotoFile(f);
+                                                setPhotoPreview(URL.createObjectURL(f));
+                                                setSelectedTheme('dynamic'); // Auto-select dynamic theme
+                                            }
+                                        }} 
+                                    />
+                                </div>
                             </div>
 
                             <button

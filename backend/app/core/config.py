@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     groq_api_key: str = ""
     huggingface_api_key: str = ""
+    openrouter_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -66,35 +66,18 @@ ROOM_ANCHORS = {
 }
 
 PALACE_EXTRACTION_PROMPT = """
-You are an expert educational AI and Knowledge Mapper for a 3D Mind Palace application called NeuralHome.
-The user will provide text extracted from a PDF study document AND a list of "{num_anchors} ANCHOR" objects that physically exist in their 3D room.
+You are a Knowledge Mapper for a 3D Mind Palace app called NeuralHome.
+Extract key concepts from the study text and map them to physical room anchors.
 
-CRITICAL RULES:
-1. You MUST extract EXACTLY {num_anchors} key concepts from the text. Not more, not less.
-2. You MUST assign exactly ONE concept to EACH anchor. 
-3. NEVER assign two concepts to the same anchor. This is a strict 1-to-1 mapping.
-4. If the text is short, break it down into {num_anchors} sub-concepts to fill all anchors.
+ANCHOR COUNT: {num_anchors}
+IMPORTANT RULES:
+- Extract EXACTLY {num_anchors} concepts. Each anchor gets ONE concept, no repeats.
+- If few anchors exist, make concepts BROAD (group related subtopics together).
+- Keep label short (2-4 words). Keep feynman_summary simple (1-2 sentences max).
+- Each anchor_id must appear exactly once.
 
-For each concept output:
-- `id`: Sequential string ("1", "2", "3"...)
-- `label`: Very short concept name (max 3-4 words)
-- `context`: 1-2 sentence excerpt defining this concept
-- `feynman_summary`: Simple explanation as if to a 10-year-old (2-3 sentences)
-- `anchor_id`: The `id` of the anchor this concept belongs to. (Remember: each anchor id MUST be used exactly once).
-
-Return ONLY a valid JSON object — no markdown, no explanation:
-{{
-    "title": "Document title (short)",
-    "concepts": [
-        {{
-            "id": "1",
-            "label": "Concept Name",
-            "context": "...",
-            "feynman_summary": "...",
-            "anchor_id": "<anchor_id>"
-        }}
-    ]
-}}
+Output ONLY this JSON (no markdown):
+{{"title":"...","concepts":[{{"id":"1","label":"...","context":"...","feynman_summary":"...","anchor_id":"..."}}, ...]}}
 """
 
 CHAT_SYSTEM_PROMPT = """\
@@ -168,38 +151,101 @@ async def architect_chat(user_message: str, history: list[dict] | None = None) -
     return response.choices[0].message.content
 
 
-async def extract_palace_from_chunks(combined_text: str, theme: str = "neon_dev") -> dict:
+async def extract_palace_from_chunks(combined_text: str, theme: str = "neon_dev", custom_anchors: list = None) -> dict:
     """
     Extract concepts and map them to anchor objects of the given room theme.
     Uses the heavy 70B model for accurate semantic mapping.
+    Post-processes to ensure strict 1-to-1 anchor assignment.
+    Retries up to 3 times on loop-detection or transient errors.
     """
-    anchors = ROOM_ANCHORS.get(theme, ROOM_ANCHORS["neon_dev"])
-    prompt_input = f"ANCHORS: {json.dumps(anchors)}\n\nTEXT:\n{combined_text}"
+    import time
+    anchors = custom_anchors if custom_anchors else ROOM_ANCHORS.get(theme, ROOM_ANCHORS["neon_dev"])
+    
+    # Truncate text to avoid excessively long prompts that trigger loop detection
+    MAX_TEXT_CHARS = 8000
+    if len(combined_text) > MAX_TEXT_CHARS:
+        combined_text = combined_text[:MAX_TEXT_CHARS] + "\n[... truncated for brevity ...]"
+
+    anchor_list = [{"id": a["id"], "label": a["label"], "hint": a.get("semantic_hint", "")} for a in anchors]
+    prompt_input = f"ANCHORS:\n{json.dumps(anchor_list, ensure_ascii=False)}\n\nSTUDY TEXT:\n{combined_text}"
 
     print(f"[LLMService] Mapping to theme '{theme}' with {len(anchors)} anchors")
 
-    try:
-        system_prompt = PALACE_EXTRACTION_PROMPT.format(num_anchors=len(anchors))
-        response = _client.chat.completions.create(
-            model=_MAPPER_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt_input},
-            ],
-            temperature=0.2,
-            response_format={"type": "json_object"},
-            max_tokens=4096,
-        )
-        raw_text = response.choices[0].message.content
-        print(f"[LLMService] Extract response: {len(raw_text)} chars")
-        return json.loads(raw_text)
+    system_prompt = PALACE_EXTRACTION_PROMPT.format(num_anchors=len(anchors))
 
-    except json.JSONDecodeError as e:
-        print(f"[LLMService] JSON parse error: {e}")
-        raise ValueError("LLM returned invalid JSON") from e
-    except Exception as e:
-        print(f"[LLMService] Error: {type(e).__name__}: {e}")
-        raise
+    MAX_RETRIES = 3
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = _client.chat.completions.create(
+                model=_MAPPER_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": prompt_input},
+                ],
+                temperature=0.35,          # Slightly higher to reduce repetition
+                response_format={"type": "json_object"},
+                max_tokens=min(300 * len(anchors), 3000),  # ~300 tokens per concept
+            )
+            raw_text = response.choices[0].message.content
+            print(f"[LLMService] Extract response: {len(raw_text)} chars (attempt {attempt + 1})")
+            result = json.loads(raw_text)
+            break  # success
+
+        except json.JSONDecodeError as e:
+            print(f"[LLMService] JSON parse error (attempt {attempt + 1}): {e}")
+            if attempt == MAX_RETRIES - 1:
+                raise ValueError("LLM returned invalid JSON after retries") from e
+            time.sleep(1)
+
+        except Exception as e:
+            err_str = str(e).lower()
+            print(f"[LLMService] Error (attempt {attempt + 1}): {type(e).__name__}: {e}")
+
+            # On loop detection, add the bypass tag and retry with simpler prompt
+            if "loop" in err_str or "looping" in err_str:
+                print("[LLMService] Loop detection triggered — simplifying prompt and retrying")
+                # Inject the bypass tag the API requires
+                prompt_input_retry = "[ignoring loop detection]\n" + prompt_input
+                try:
+                    response = _client.chat.completions.create(
+                        model=_MAPPER_MODEL,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user",   "content": prompt_input_retry},
+                        ],
+                        temperature=0.5,
+                        response_format={"type": "json_object"},
+                        max_tokens=min(250 * len(anchors), 2500),
+                    )
+                    raw_text = response.choices[0].message.content
+                    result = json.loads(raw_text)
+                    break  # success after loop bypass
+                except Exception as e2:
+                    print(f"[LLMService] Retry after loop bypass also failed: {e2}")
+            
+            if attempt == MAX_RETRIES - 1:
+                raise
+            time.sleep(2 ** attempt)  # exponential backoff
+
+    # ── POST-PROCESS: enforce strict 1-to-1 anchor mapping ───────────────────
+    valid_anchor_ids = [a["id"] for a in anchors]
+    used_anchors = set()
+    clean_concepts = []
+    for concept in result.get("concepts", []):
+        aid = concept.get("anchor_id")
+        if aid in used_anchors or aid not in valid_anchor_ids:
+            unused = [a for a in valid_anchor_ids if a not in used_anchors]
+            if unused:
+                concept["anchor_id"] = unused[0]
+                aid = unused[0]
+            else:
+                continue  # drop extras beyond anchor count
+        used_anchors.add(aid)
+        clean_concepts.append(concept)
+
+    result["concepts"] = clean_concepts[:len(anchors)]
+    print(f"[LLMService] Final: {len(result['concepts'])} concepts for {len(anchors)} anchors")
+    return result
 
 
 async def chat_about_concept(

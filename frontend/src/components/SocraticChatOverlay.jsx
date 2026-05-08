@@ -225,8 +225,8 @@ export default function SocraticChatOverlay({ concept, theme = 'neon_dev', onClo
                     </button>
                 </div>
 
-                {/* ── Feynman summary chip ──────────────────────────────── */}
-                {concept.feynman_summary && (
+                {/* ── Concept summary chip ──────────────────────────────── */}
+                {concept.context && (
                     <div style={{
                         margin: '0.75rem 1rem 0',
                         padding: '0.6rem 0.85rem',
@@ -239,9 +239,11 @@ export default function SocraticChatOverlay({ concept, theme = 'neon_dev', onClo
                         flexShrink: 0,
                     }}>
                         <span style={{ color: accent, fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                            Feynman hint ·&nbsp;
+                            Resumen ·&nbsp;
                         </span>
-                        {concept.feynman_summary}
+                        {concept.context.length > 200
+                            ? concept.context.slice(0, 200).trimEnd() + '…'
+                            : concept.context}
                     </div>
                 )}
 

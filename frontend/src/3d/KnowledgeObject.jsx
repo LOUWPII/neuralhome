@@ -104,8 +104,8 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
                 </div>
             </Html>
 
-            {/* Feynman Summary Card — Appears on hover, just above the label */}
-            {hovered && concept.feynman_summary && (
+            {/* Concept Summary Card — Appears on hover, just above the label */}
+            {hovered && concept.context && (
                 <Html position={[0, -height + 5, 0]} center style={{ pointerEvents: 'none', width: '260px', zIndex: 100 }}>
                     <div style={{
                         background: 'rgba(5,0,16,0.98)',
@@ -120,9 +120,11 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
                         textAlign: 'center',
                     }}>
                         <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: colors.hover, marginBottom: '8px', fontWeight: 'bold', letterSpacing: '1px' }}>
-                            Feynman Summary
+                            Resumen
                         </div>
-                        {concept.feynman_summary}
+                        {concept.context.length > 180
+                            ? concept.context.slice(0, 180).trimEnd() + '…'
+                            : concept.context}
                     </div>
                 </Html>
             )}

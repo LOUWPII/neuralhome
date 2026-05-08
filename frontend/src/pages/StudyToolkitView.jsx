@@ -18,16 +18,28 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
     ArrowLeft, Send, Brain, BookOpen, ChevronDown,
     Mic, HelpCircle, Layers, FileBarChart, FileText,
-    MessageSquare, History, Sparkles
+    MessageSquare, History, Sparkles, Plus
 } from 'lucide-react';
 import StudyToolCard from '../components/StudyToolCard';
 import FeynmanVoiceMentor from '../components/FeynmanVoiceMentor';
 import FlashCardsDeck from '../components/FlashCardsDeck';
+import { useTranslation } from '../contexts/useTranslation';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ConceptMiniature from '../3d/ConceptMiniature';
+import InfographicView from '../components/InfographicView';
 
 const API_BASE = 'http://127.0.0.1:8001';
+
+/* ── style helpers ──────────────────────────────────────────────────────── */
+const spinnerStyle = (accent) => ({
+    width: '18px',
+    height: '18px',
+    border: `2px solid ${accent}33`,
+    borderTop: `2px solid ${accent}`,
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite'
+});
 
 /* ── colour helpers ─────────────────────────────────────────────────────── */
 const themeAccent = (t) => '#a78bfa';
@@ -86,7 +98,7 @@ function TypingIndicator({ accent }) {
 export default function StudyToolkitView() {
     const { palaceId, conceptId } = useParams();
     const navigate = useNavigate();
-    const { language } = useAuth();  // 'en' | 'es'
+    const { language, t } = useTranslation(); // 'en' | 'es'
 
     /* data */
     const [concept, setConcept] = useState(null);
@@ -106,10 +118,12 @@ export default function StudyToolkitView() {
     /* quiz state */
     const [quizQuestions, setQuizQuestions] = useState([]);
     const [quizLoading, setQuizLoading] = useState(false);
+    const [quizError, setQuizError] = useState(null);
     const [quizAnswers, setQuizAnswers] = useState({});
     const [quizResults, setQuizResults] = useState(null);
     const [quizMode, setQuizMode] = useState('menu'); // 'menu' | 'active'
     const [lastQuizData, setLastQuizData] = useState(null);
+    const [summaryLoading, setSummaryLoading] = useState(false);
 
     const bottomRef = useRef(null);
     const inputRef = useRef(null);
@@ -148,7 +162,10 @@ export default function StudyToolkitView() {
     useEffect(() => {
         if (!started && concept && palace) {
             setStarted(true);
-            sendMessage('Hello — I want to start studying this concept.');
+            const initialMsg = language === 'es' 
+                ? 'Hola — quiero empezar a estudiar este concepto.' 
+                : 'Hello — I want to start studying this concept.';
+            sendMessage(initialMsg);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [concept, palace]);
@@ -161,8 +178,19 @@ export default function StudyToolkitView() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTool]);
 
+    /* ── auto-generate Feynman Summary when concept loads ───────────────── */
+    useEffect(() => {
+        if (!concept || summaryLoading) return;
+        // Auto-generate if there's no valid structured JSON summary yet
+        let hasJson = false;
+        try { hasJson = !!JSON.parse(concept.feynman_summary)?.intro; } catch {}
+        if (!hasJson) generateDetailedSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [concept?.id]);
+
     async function checkLastQuiz() {
         setQuizLoading(true);
+        setQuizError(null);
         try {
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
@@ -175,14 +203,16 @@ export default function StudyToolkitView() {
 
             if (data.cuestionario && data.cuestionario.length > 0) {
                 setLastQuizData(data);
+                setQuizLoading(false);
             } else {
-                generateQuiz();
+                // generateQuiz manages its own loading state
+                setQuizLoading(false);
+                await generateQuiz();
             }
         } catch (err) {
             console.error('[Quiz] Check last error:', err);
-            generateQuiz();
-        } finally {
             setQuizLoading(false);
+            await generateQuiz();
         }
     }
 
@@ -191,6 +221,7 @@ export default function StudyToolkitView() {
         setQuizQuestions([]);
         setQuizAnswers({});
         setQuizResults(null);
+        setQuizError(null);
         setQuizLoading(true);
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -200,13 +231,23 @@ export default function StudyToolkitView() {
             const res = await fetch(`${API_BASE}/api/quiz/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ concept_id: conceptId })
+                body: JSON.stringify({ 
+                    concept_id: conceptId,
+                    language: language 
+                })
             });
-            if (!res.ok) throw new Error("Failed to generate quiz");
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || `Server error ${res.status}`);
+            }
             const data = await res.json();
-            setQuizQuestions(data.cuestionario || []);
+            const questions = data.cuestionario || [];
+            if (questions.length === 0) throw new Error('El servidor no devolvió preguntas.');
+            setQuizQuestions(questions);
         } catch (err) {
             console.error('[Quiz] Error:', err);
+            setQuizError(err.message || 'Error al generar el cuestionario.');
+            setQuizMode('menu');
         } finally {
             setQuizLoading(false);
         }
@@ -233,7 +274,12 @@ export default function StudyToolkitView() {
                     const res = await fetch(`${API_BASE}/api/quiz/evaluate/open`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ concept_id: conceptId, pregunta: q.enunciado, respuesta_usuario: userAns })
+                        body: JSON.stringify({ 
+                            concept_id: conceptId, 
+                            pregunta: q.enunciado, 
+                            respuesta_usuario: userAns,
+                            language: language
+                        })
                     });
                     results[q.id] = await res.json();
                 } else {
@@ -246,6 +292,27 @@ export default function StudyToolkitView() {
             console.error('[Quiz Evaluate] Error:', err);
         } finally {
             setQuizLoading(false);
+        }
+    }
+
+    async function generateDetailedSummary() {
+        setSummaryLoading(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+            
+            const res = await fetch(`${API_BASE}/api/chat/generate-feynman-summary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ concept_id: conceptId, language: language })
+            });
+            if (!res.ok) throw new Error("Failed to generate detailed summary");
+            const data = await res.json();
+            setConcept(prev => ({ ...prev, feynman_summary: data.summary }));
+        } catch (err) {
+            console.error('[Summary] Error:', err);
+        } finally {
+            setSummaryLoading(false);
         }
     }
 
@@ -316,7 +383,7 @@ export default function StudyToolkitView() {
             <div style={fullCenter}>
                 <div style={spinnerStyle(accent)} />
                 <p style={{ color: accent, marginTop: '1.2rem', fontFamily: 'inherit', letterSpacing: '1px' }}>
-                    Loading Study Session…
+                    {t('loading')}
                 </p>
             </div>
         );
@@ -325,9 +392,9 @@ export default function StudyToolkitView() {
     if (fetchErr || !concept || !palace) {
         return (
             <div style={{ ...fullCenter, flexDirection: 'column', gap: '1rem' }}>
-                <p style={{ color: '#ef4444', fontSize: '1rem' }}>{fetchErr ?? 'Concept not found.'}</p>
+                <p style={{ color: '#ef4444', fontSize: '1rem' }}>{fetchErr ?? t('conceptNotFound')}</p>
                 <button className="btn-outline" onClick={() => navigate(`/palace/${palaceId}`)}>
-                    Return to Palace
+                    {t('backToPalace')}
                 </button>
             </div>
         );
@@ -358,25 +425,23 @@ export default function StudyToolkitView() {
                 zIndex: 20,
             }}>
                 <button
-                    id="study-back-btn"
                     onClick={() => navigate(`/palace/${palaceId}`)}
                     style={{
-                        display: 'flex', alignItems: 'center', gap: '0.4rem',
-                        background: 'transparent', border: `1px solid ${accent}44`,
-                        color: 'var(--text-muted)', borderRadius: '8px',
-                        padding: '0.4rem 0.8rem', cursor: 'pointer',
-                        fontSize: '0.85rem', transition: 'all 0.2s',
+                        background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '10px',
+                        color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem',
+                        padding: '0.55rem 1rem', fontSize: '0.85rem', fontWeight: 600,
+                        transition: 'background 0.2s',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = accent; e.currentTarget.style.color = '#fff'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = `${accent}44`; e.currentTarget.style.color = 'var(--text-muted)'; }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
                 >
-                    <ArrowLeft size={15} /> Back to Palace
+                    <ArrowLeft size={16} /> {t('back')}
                 </button>
 
                 {/* Centre: concept label */}
                 <div style={{ textAlign: 'center' }}>
-                    <p style={{ margin: 0, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '1.2px', color: accent, fontWeight: 600 }}>
-                        Study Mode · {palace.subject || palace.title}
+                    <p style={{ margin: 0, fontSize: '0.65rem', color: accent, textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 800, marginBottom: '0.1rem' }}>
+                        {t('studyMode')}
                     </p>
                     <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc' }}>
                         {concept.label}
@@ -390,7 +455,7 @@ export default function StudyToolkitView() {
                     borderRadius: '20px', padding: '0.3rem 0.85rem',
                     fontSize: '0.75rem', color: accent, fontWeight: 600,
                 }}>
-                    <BookOpen size={13} /> Socratic Session
+                    <BookOpen size={13} /> {t('socraticSession')}
                 </div>
             </nav>
 
@@ -424,10 +489,10 @@ export default function StudyToolkitView() {
                                 </div>
                                 <div>
                                     <p style={{ margin: 0, fontSize: '0.7rem', color: accent, textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 600 }}>
-                                        Socratic Tutor
+                                        {t('socraticTutor')}
                                     </p>
                                     <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                                        Grounded in your study material
+                                        {t('groundedMaterial')}
                                     </p>
                                 </div>
                             </div>
@@ -458,7 +523,7 @@ export default function StudyToolkitView() {
                                     ref={inputRef}
                                     id="study-chat-input"
                                     rows={2}
-                                    placeholder="Think aloud, ask, or answer the tutor…"
+                                    placeholder={t('thinkAloudPlaceholder')}
                                     value={input}
                                     onChange={e => setInput(e.target.value)}
                                     onKeyDown={handleKeyDown}
@@ -507,16 +572,16 @@ export default function StudyToolkitView() {
                     ) : (
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'rgba(5,0,14,0.7)', padding: '2rem', overflowY: 'auto' }}>
                             <h2 style={{ fontSize: '1.4rem', marginBottom: '2rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                                <History size={24} color={accent} /> Historial de Evaluaciones
+                                <History size={24} color={accent} /> {t('evaluationHistory')}
                             </h2>
                             {[1, 2, 3, 4].map(i => (
                                 <div key={i} style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', marginBottom: '1rem', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                        <span style={{ fontSize: '1rem', fontWeight: 600, color: accent }}>Simulacro #{i}</span>
-                                        <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>Hace {i * 2} días</span>
+                                        <span style={{ fontSize: '1rem', fontWeight: 600, color: accent }}>{t('mockTest')} #{i}</span>
+                                        <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{i * 2} {t('daysAgo')}</span>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>Dominio: <span style={{ color: '#fff' }}>{(90 - i * 5)}%</span></p>
+                                        <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>{t('mastery')}: <span style={{ color: '#fff' }}>{(90 - i * 5)}%</span></p>
                                         <div style={{ flex: 1, height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px' }}>
                                             <div style={{ width: `${90 - i * 5}%`, height: '100%', background: accent, borderRadius: '2px' }} />
                                         </div>
@@ -544,47 +609,47 @@ export default function StudyToolkitView() {
                             backdropFilter: 'blur(10px)',
                         }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-                                <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px' }}>Studio Tools</h2>
+                                <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px' }}>{t('studioTools')}</h2>
                                 <Sparkles size={20} color={accent} />
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                                 <StudyToolCard
-                                    title="Feynman Tutor"
-                                    description="Enséñale a la IA por voz"
+                                    title={t('feynmanTutor')}
+                                    description={t('feynmanTutorDesc')}
                                     icon={Mic}
                                     accent={accent}
                                     active={false}
                                     onClick={() => setActiveTool('feynman')}
                                 />
                                 <StudyToolCard
-                                    title="Cuestionario"
-                                    description="Evalúa tu retención"
+                                    title={t('quiz')}
+                                    description={t('quizDesc')}
                                     icon={HelpCircle}
                                     accent={accent}
                                     active={false}
                                     onClick={() => setActiveTool('cuestionario')}
                                 />
                                 <StudyToolCard
-                                    title="FlashCards"
-                                    description="Repaso espaciado activo"
+                                    title={t('flashcards')}
+                                    description={t('flashcardsDesc')}
                                     icon={Layers}
                                     accent={accent}
                                     active={false}
                                     onClick={() => setActiveTool('flashcards')}
                                 />
                                 <StudyToolCard
-                                    title="Infografía"
-                                    description="Mapa mental dinámico"
+                                    title={t('infographic')}
+                                    description={t('infographicDesc')}
                                     icon={FileBarChart}
                                     accent={accent}
                                     active={false}
                                     onClick={() => setActiveTool('infografia')}
                                 />
                                 <StudyToolCard
-                                    title="Resumen"
-                                    description="Síntesis ejecutiva"
-                                    icon={Sparkles}
+                                    title={t('feynmanSummary')}
+                                    description={t('feynmanSummaryDesc')}
+                                    icon={FileText}
                                     accent={accent}
                                     active={false}
                                     onClick={() => setActiveTool('feynman_summary')}
@@ -619,7 +684,7 @@ export default function StudyToolkitView() {
                                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
                             >
-                                <ArrowLeft size={16} /> {quizMode === 'active' && activeTool === 'cuestionario' ? "Menú" : "Volver"}
+                                <ArrowLeft size={16} /> {quizMode === 'active' && activeTool === 'cuestionario' ? t('menu') : t('back')}
                             </button>
 
                             {activeTool === 'miniature' && (
@@ -633,8 +698,8 @@ export default function StudyToolkitView() {
                                     <div style={{ width: '100%', maxWidth: '85%', height: '100%', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                                         {/* Header Card */}
                                         <StudyToolCard
-                                            title="Feynman Tutor"
-                                            description="Voice-powered learning. Explain concepts out loud and the tutor will guide you."
+                                            title={t('feynmanTutor')}
+                                            description={t('feynmanTutorDesc')}
                                             icon={Mic}
                                             accent={accent}
                                             active={true}
@@ -655,23 +720,74 @@ export default function StudyToolkitView() {
 
                             {activeTool === 'cuestionario' && (
                                 <div style={{ flex: 1, padding: '5rem 3rem 3rem', overflowY: 'auto' }}>
-                                    <h2 style={{ fontSize: '1.6rem', color: '#fff', marginBottom: '2rem' }}>Evaluación Rápida</h2>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '1rem' }}>
+                                        <HelpCircle size={24} color={accent} />
+                                        <h2 style={{ margin: 0, color: '#fff', fontSize: '1.4rem' }}>{t('quickEvaluation')}</h2>
+                                    </div>
 
-                                    {quizMode === 'menu' && !quizLoading && lastQuizData && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', alignItems: 'center', marginTop: '3rem' }}>
-                                            <p style={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center', fontSize: '1rem', marginBottom: '1rem' }}>
-                                                Ya tienes un cuestionario guardado para este concepto. ¿Qué deseas hacer?
-                                            </p>
-                                            <button className="btn-primary" onClick={reuseQuiz} style={{ width: '100%', maxWidth: '320px', padding: '1rem', borderRadius: '12px', background: accent, border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-                                                Volver a tomar el último
-                                            </button>
-                                            <button className="btn-outline" onClick={generateQuiz} style={{ width: '100%', maxWidth: '320px', padding: '1rem', borderRadius: '12px', background: 'transparent', border: `2px solid ${accent}66`, color: '#fff', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-                                                Generar nuevo cuestionario
+                                    {quizMode === 'menu' && !quizLoading && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', padding: '1rem' }}>
+                                            {lastQuizData && (
+                                                <button
+                                                    onClick={reuseQuiz}
+                                                    style={{
+                                                        background: 'rgba(255,255,255,0.05)',
+                                                        border: `1px solid ${accent}44`,
+                                                        borderRadius: '16px',
+                                                        padding: '1.5rem',
+                                                        color: '#fff',
+                                                        textAlign: 'left',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                                >
+                                                    <h3 style={{ margin: '0 0 0.5rem', color: accent }}>{t('retakeQuiz')}</h3>
+                                                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>
+                                                        {lastQuizData.cuestionario.length} {t('questions')} · {t('lastScore')}: {lastQuizData.score || 'N/A'}
+                                                    </p>
+                                                </button>
+                                            )}
+
+                                            <button
+                                                onClick={generateQuiz}
+                                                style={{
+                                                    background: `linear-gradient(135deg, ${accent}22, ${dim}22)`,
+                                                    border: `1px solid ${accent}88`,
+                                                    borderRadius: '16px',
+                                                    padding: '2rem',
+                                                    color: '#fff',
+                                                    textAlign: 'center',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                                                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                                            >
+                                                <Plus size={32} color={accent} style={{ marginBottom: '1rem' }} />
+                                                <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem' }}>{t('generateNewQuiz')}</h3>
+                                                <p style={{ margin: 0, fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
+                                                    {t('noQuizGenerated')}
+                                                </p>
                                             </button>
                                         </div>
                                     )}
 
-                                    {quizLoading && <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: accent }}><div style={spinnerStyle(accent)} /> Cargando cuestionario...</div>}
+                                    {quizLoading && <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', color: accent }}><div style={spinnerStyle(accent)} /> {t('loading')}...</div>}
+
+                                    {quizError && !quizLoading && (
+                                        <div style={{ margin: '1rem 0', padding: '1rem 1.5rem', borderRadius: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', color: '#fca5a5' }}>
+                                            <p style={{ margin: '0 0 0.75rem', fontWeight: 600 }}>⚠️ Error al generar el cuestionario</p>
+                                            <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', opacity: 0.8 }}>{quizError}</p>
+                                            <button
+                                                onClick={generateQuiz}
+                                                style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid #ef4444', borderRadius: '8px', padding: '0.5rem 1.25rem', color: '#fca5a5', cursor: 'pointer', fontWeight: 600 }}
+                                            >
+                                                Reintentar
+                                            </button>
+                                        </div>
+                                    )}
 
                                     {quizMode === 'active' && !quizLoading && quizQuestions.map((q, idx) => (
                                         <div key={q.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem' }}>
@@ -681,7 +797,7 @@ export default function StudyToolkitView() {
                                                 <textarea
                                                     value={quizAnswers[q.id] || ''}
                                                     onChange={e => setQuizAnswers({ ...quizAnswers, [q.id]: e.target.value })}
-                                                    placeholder="Escribe tu respuesta..."
+                                                    placeholder={t('writeAnswer')}
                                                     style={{ width: '100%', padding: '0.8rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: `1px solid rgba(255,255,255,0.1)`, color: '#fff', minHeight: '80px', fontFamily: 'inherit' }}
                                                     disabled={!!quizResults}
                                                 />
@@ -692,14 +808,13 @@ export default function StudyToolkitView() {
                                                         let borderColor = isSelected ? accent : 'rgba(255,255,255,0.1)';
                                                         let bgColor = isSelected ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.02)';
 
-                                                        // Show correct/incorrect if evaluated
                                                         if (quizResults) {
                                                             const isCorrectAnswer = opt.trim().toLowerCase() === (q.respuesta_correcta || "").trim().toLowerCase();
                                                             if (isCorrectAnswer) {
-                                                                borderColor = '#10b981'; // green
+                                                                borderColor = '#10b981';
                                                                 bgColor = 'rgba(16, 185, 129, 0.1)';
                                                             } else if (isSelected && !quizResults[q.id].correcta) {
-                                                                borderColor = '#ef4444'; // red
+                                                                borderColor = '#ef4444';
                                                                 bgColor = 'rgba(239, 68, 68, 0.1)';
                                                             }
                                                         }
@@ -717,11 +832,10 @@ export default function StudyToolkitView() {
                                                 </div>
                                             )}
 
-                                            {/* Feedback for open questions */}
                                             {quizResults && q.tipo === 'abierta' && (
                                                 <div style={{ marginTop: '1rem', padding: '1rem', borderRadius: '8px', background: quizResults[q.id].correcta ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', border: `1px solid ${quizResults[q.id].correcta ? '#10b981' : '#ef4444'}` }}>
                                                     <p style={{ margin: 0, fontSize: '0.9rem', color: quizResults[q.id].correcta ? '#34d399' : '#f87171' }}>
-                                                        <strong>Puntuación: {quizResults[q.id].puntuacion}/100</strong><br />
+                                                        <strong>{t('score')}: {quizResults[q.id].puntuacion}/100</strong><br />
                                                         {quizResults[q.id].feedback}
                                                     </p>
                                                 </div>
@@ -731,13 +845,13 @@ export default function StudyToolkitView() {
 
                                     {quizMode === 'active' && !quizLoading && quizQuestions.length > 0 && !quizResults && (
                                         <button className="btn-primary" onClick={evaluateQuiz} style={{ width: '100%', padding: '1rem', borderRadius: '12px', background: accent, border: 'none', color: '#fff', fontWeight: 700, marginTop: '1rem', cursor: 'pointer' }}>
-                                            Finalizar y Evaluar Cuestionario
+                                            {t('finishEvaluate')}
                                         </button>
                                     )}
 
                                     {quizMode === 'active' && quizResults && (
                                         <button className="btn-primary" onClick={() => setQuizMode('menu')} style={{ width: '100%', padding: '1rem', borderRadius: '12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontWeight: 700, marginTop: '1rem', cursor: 'pointer' }}>
-                                            Finalizar (Volver al Menú)
+                                            {t('finishReturn')}
                                         </button>
                                     )}
                                 </div>
@@ -747,8 +861,8 @@ export default function StudyToolkitView() {
                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}>
                                     <div style={{ padding: '5rem 1.5rem 0 1.5rem', flexShrink: 0 }}>
                                         <StudyToolCard
-                                            title="FlashCards"
-                                            description="Repaso espaciado activo"
+                                            title={t('flashcards')}
+                                            description={t('flashcardsDesc')}
                                             icon={Layers}
                                             accent={accent}
                                             active={true}
@@ -768,29 +882,156 @@ export default function StudyToolkitView() {
                                 <div style={{ flex: 1, padding: '5rem 3rem 3rem', overflowY: 'auto' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
                                         <Sparkles size={28} color={accent} />
-                                        <h2 style={{ margin: 0, color: '#fff', fontSize: '1.6rem' }}>Resumen Feynman</h2>
+                                        <h2 style={{ margin: 0, color: '#fff', fontSize: '1.6rem' }}>{t('feynmanSummary')}</h2>
                                     </div>
-                                    <div style={{ padding: '2rem', background: `${accent}0e`, border: `1px solid ${accent}33`, borderRadius: '20px', lineHeight: 1.8, color: 'rgba(255,255,255,0.85)', fontSize: '1.05rem' }}>
-                                        {concept.feynman_summary || "Generando síntesis simplificada..."}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                        {summaryLoading ? (
+                                            /* Loading skeleton */
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                                                <div style={{ padding: '1.5rem 2rem', background: `linear-gradient(135deg, ${accent}12, ${accent}06)`, border: `1px solid ${accent}22`, borderRadius: '18px', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                                    <div style={{ ...spinnerStyle(accent), flexShrink: 0 }} />
+                                                    <p style={{ margin: 0, color: 'rgba(255,255,255,0.5)', fontSize: '0.95rem' }}>
+                                                        {t('generating')}…
+                                                    </p>
+                                                </div>
+                                                {[1, 2, 3].map(i => (
+                                                    <div key={i} style={{ height: '100px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '18px', animation: 'pulse 1.8s ease-in-out infinite' }} />
+                                                ))}
+                                            </div>
+                                        ) : (() => {
+                                            // Parse JSON summary or fall back to plain text
+                                            let s = null;
+                                            if (concept.feynman_summary) {
+                                                try { s = JSON.parse(concept.feynman_summary); } catch {}
+                                            }
+
+                                            if (!s) {
+                                                return (
+                                                    <div style={{ padding: '3rem', background: `rgba(255,255,255,0.04)`, border: `1px solid ${accent}33`, borderRadius: '20px', color: 'rgba(255,255,255,0.5)', fontSize: '1rem', lineHeight: 1.8, textAlign: 'center' }}>
+                                                        El resumen se está preparando…
+                                                    </div>
+                                                );
+                                            }
+
+                                            const sectionStyle = {
+                                                padding: '1.8rem 2rem',
+                                                background: 'rgba(255,255,255,0.04)',
+                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                borderRadius: '18px',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '1rem',
+                                            };
+                                            const titleStyle = {
+                                                margin: 0,
+                                                fontSize: '0.75rem',
+                                                fontWeight: 700,
+                                                letterSpacing: '2px',
+                                                textTransform: 'uppercase',
+                                                color: accent,
+                                                opacity: 0.9,
+                                            };
+                                            const bulletStyle = {
+                                                display: 'flex',
+                                                alignItems: 'flex-start',
+                                                gap: '0.75rem',
+                                                color: 'rgba(255,255,255,0.85)',
+                                                fontSize: '0.97rem',
+                                                lineHeight: 1.65,
+                                            };
+                                            const dotStyle = {
+                                                width: '6px',
+                                                height: '6px',
+                                                borderRadius: '50%',
+                                                background: accent,
+                                                flexShrink: 0,
+                                                marginTop: '0.55rem',
+                                            };
+
+                                            return (
+                                                <>
+                                                    {/* Intro banner */}
+                                                    {s.intro && (
+                                                        <div style={{ padding: '1.5rem 2rem', background: `linear-gradient(135deg, ${accent}22, ${accent}08)`, border: `1px solid ${accent}44`, borderRadius: '18px', color: '#fff', fontSize: '1.1rem', fontWeight: 500, lineHeight: 1.6, fontStyle: 'italic' }}>
+                                                            "{s.intro}"
+                                                        </div>
+                                                    )}
+
+                                                    {/* Two-column grid for What is + How it works */}
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                                                        {s.what_is && (
+                                                            <div style={sectionStyle}>
+                                                                <p style={titleStyle}>{s.what_is.title || '¿Qué es?'}</p>
+                                                                {(s.what_is.bullets || []).map((b, i) => (
+                                                                    <div key={i} style={bulletStyle}><div style={dotStyle} /><span>{b}</span></div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {s.how_it_works && (
+                                                            <div style={sectionStyle}>
+                                                                <p style={titleStyle}>{s.how_it_works.title || '¿Cómo funciona?'}</p>
+                                                                {(s.how_it_works.bullets || []).map((b, i) => (
+                                                                    <div key={i} style={bulletStyle}><div style={dotStyle} /><span>{b}</span></div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Why it matters */}
+                                                    {s.why_it_matters && (
+                                                        <div style={sectionStyle}>
+                                                            <p style={titleStyle}>{s.why_it_matters.title || '¿Por qué importa?'}</p>
+                                                            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                                                                {(s.why_it_matters.bullets || []).map((b, i) => (
+                                                                    <div key={i} style={{ flex: '1 1 200px', padding: '1rem 1.25rem', background: `${accent}10`, borderRadius: '12px', border: `1px solid ${accent}20`, color: 'rgba(255,255,255,0.85)', fontSize: '0.95rem', lineHeight: 1.6 }}>{b}</div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Analogy */}
+                                                    {s.analogy && (
+                                                        <div style={{ padding: '1.8rem 2rem', background: 'rgba(255,255,255,0.03)', border: `1px solid ${accent}30`, borderLeft: `4px solid ${accent}`, borderRadius: '18px' }}>
+                                                            <p style={{ ...titleStyle, marginBottom: '0.75rem' }}>{s.analogy.title || 'Analogía'}</p>
+                                                            <p style={{ margin: 0, color: 'rgba(255,255,255,0.8)', fontSize: '1rem', lineHeight: 1.75, fontStyle: 'italic' }}>{s.analogy.text}</p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Key points */}
+                                                    {s.key_points && s.key_points.length > 0 && (
+                                                        <div style={sectionStyle}>
+                                                            <p style={titleStyle}>Puntos Clave</p>
+                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                                                                {s.key_points.map((kp, i) => (
+                                                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.9rem 1rem', background: 'rgba(255,255,255,0.06)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: accent, background: `${accent}22`, padding: '2px 7px', borderRadius: '6px' }}>{i + 1}</span>
+                                                                        <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.9rem', lineHeight: 1.5 }}>{kp}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Mini summary footer */}
+                                                    {s.mini_summary && (
+                                                        <div style={{ padding: '1.25rem 1.75rem', background: `${accent}18`, borderRadius: '14px', color: '#fff', fontSize: '0.95rem', fontWeight: 600, textAlign: 'center', letterSpacing: '0.3px' }}>
+                                                            {s.mini_summary}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             )}
 
                             {activeTool === 'infografia' && (
                                 <div style={{ flex: 1, padding: '5rem 3rem 3rem', overflowY: 'auto' }}>
-                                    <div style={{ maxWidth: '800px', margin: '0 auto', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px', padding: '3rem' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                                            <FileBarChart size={32} color={accent} />
-                                            <h2 style={{ margin: 0, color: '#fff' }}>Mapa de Conocimiento Visual</h2>
-                                        </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem' }}>
-                                            {[1, 2, 3, 4].map(i => (
-                                                <div key={i} style={{ height: '150px', background: 'rgba(255,255,255,0.03)', borderRadius: '16px', border: '1px dashed rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.2)' }}>
-                                                    [Visual Asset {i}]
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <InfographicView 
+                                        conceptId={conceptId} 
+                                        language={language} 
+                                        accent={accent} 
+                                    />
                                 </div>
                             )}
                         </div>
@@ -811,6 +1052,13 @@ export default function StudyToolkitView() {
                 @keyframes studySpin {
                     to { transform: rotate(360deg); }
                 }
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                @keyframes pulse {
+                    0%, 100% { opacity: 0.4; }
+                    50%      { opacity: 0.7; }
+                }
             `}</style>
         </div>
     );
@@ -823,11 +1071,3 @@ const fullCenter = {
     background: 'var(--bg-dark)',
     flexDirection: 'column',
 };
-
-const spinnerStyle = (accent) => ({
-    width: 40, height: 40,
-    border: `3px solid ${accent}33`,
-    borderTop: `3px solid ${accent}`,
-    borderRadius: '50%',
-    animation: 'studySpin 0.9s linear infinite',
-});

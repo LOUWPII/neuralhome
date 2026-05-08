@@ -5,6 +5,7 @@ from app.api.endpoints import ingest
 from app.api.endpoints import chat
 from app.api.endpoints import quiz
 from app.api.endpoints import flashcards
+from app.api.endpoints import infographic
 
 app = FastAPI(
     title=settings.project_name,
@@ -33,3 +34,4 @@ app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
 app.include_router(chat.router,   prefix="/api/chat",   tags=["chat"])
 app.include_router(quiz.router,   prefix="/api/quiz",   tags=["quiz"])
 app.include_router(flashcards.router, prefix="/api/flashcards", tags=["flashcards"])
+app.include_router(infographic.router, prefix="/api/infographic", tags=["infographic"])

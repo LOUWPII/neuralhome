@@ -10,11 +10,13 @@ router = APIRouter()
 
 class GenerateQuizRequest(BaseModel):
     concept_id: str
+    language: str = "es"
 
 class EvaluateOpenAnswerRequest(BaseModel):
     concept_id: str
     pregunta: str
     respuesta_usuario: str
+    language: str = "es"
 
 class EvaluateClosedAnswerRequest(BaseModel):
     respuesta_usuario: str
@@ -89,7 +91,7 @@ async def api_generate_quiz(
     if not contexto:
         raise HTTPException(status_code=400, detail="No text context available for this concept.")
     
-    quiz_data = await generar_cuestionario(contexto)
+    quiz_data = await generar_cuestionario(contexto, req.language)
     preguntas = quiz_data.get("cuestionario", [])
     
     # Save to database
@@ -156,7 +158,7 @@ async def api_evaluate_open(
     if not contexto:
         raise HTTPException(status_code=400, detail="No text context available for this concept.")
     
-    eval_result = await evaluar_respuesta_abierta(req.pregunta, req.respuesta_usuario, contexto)
+    eval_result = await evaluar_respuesta_abierta(req.pregunta, req.respuesta_usuario, contexto, req.language)
     return OpenAnswerEvaluationResponse(
         correcta=eval_result.get("correcta", False),
         puntuacion=eval_result.get("puntuacion", 0),
@@ -169,4 +171,3 @@ async def api_evaluate_closed(req: EvaluateClosedAnswerRequest):
     # Does not need supabase or context, evaluated statically
     is_correct = evaluar_respuesta_cerrada(req.respuesta_usuario, req.respuesta_correcta)
     return ClosedAnswerEvaluationResponse(correcta=is_correct)
-

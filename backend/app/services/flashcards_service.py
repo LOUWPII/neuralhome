@@ -1,4 +1,5 @@
 import json
+import asyncio
 from openai import OpenAI
 from app.core.config import settings
 
@@ -45,9 +46,9 @@ Estructura JSON esperada:
 
 async def generar_flashcards(contexto: str) -> dict:
     prompt = FLASHCARDS_GENERATION_PROMPT.format(contexto=contexto)
-    
-    try:
-        response = _client.chat.completions.create(
+
+    def _call():
+        return _client.chat.completions.create(
             model=_MODEL,
             messages=[
                 {"role": "system", "content": "You are a JSON generating system. Return ONLY valid JSON."},
@@ -57,6 +58,9 @@ async def generar_flashcards(contexto: str) -> dict:
             response_format={"type": "json_object"},
             max_tokens=2048,
         )
+
+    try:
+        response = await asyncio.to_thread(_call)
         raw_text = response.choices[0].message.content
         return json.loads(raw_text)
     except json.JSONDecodeError as e:

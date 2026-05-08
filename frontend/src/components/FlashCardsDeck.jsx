@@ -7,16 +7,16 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
     const [error, setError] = useState(null);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [flipped, setFlipped] = useState(false);
-    
+
     // Tracking
     const [correctCount, setCorrectCount] = useState(0);
     const [incorrectCount, setIncorrectCount] = useState(0);
     const [isFinished, setIsFinished] = useState(false);
-    
+
     useEffect(() => {
         fetchFlashcards();
     }, [conceptId]);
-    
+
     const fetchFlashcards = async () => {
         setLoading(true);
         setError(null);
@@ -26,7 +26,7 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
         setCorrectCount(0);
         setIncorrectCount(0);
         setIsFinished(false);
-        
+
         try {
             // Re-using the JWT token approach used in quiz/chat
             // Need supabase imported if we fetch session, but let's assume we can fetch without auth or we'll pass token.
@@ -34,7 +34,7 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
             const { supabase } = await import('../lib/supabase');
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
-            
+
             const res = await fetch(`http://127.0.0.1:8001/api/flashcards/generate`, {
                 method: 'POST',
                 headers: {
@@ -46,11 +46,11 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
                     user_id: session?.user?.id || 'anonymous'
                 })
             });
-            
+
             if (!res.ok) {
                 throw new Error("Error generating flashcards");
             }
-            
+
             const data = await res.json();
             if (data.flashcards && data.flashcards.length > 0) {
                 setFlashcards(data.flashcards);
@@ -64,7 +64,7 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
             setLoading(false);
         }
     };
-    
+
     const handleNext = () => {
         if (currentIndex < flashcards.length - 1) {
             setCurrentIndex(currentIndex + 1);
@@ -73,24 +73,24 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
             setIsFinished(true);
         }
     };
-    
+
     const handlePrev = () => {
         if (currentIndex > 0) {
             setCurrentIndex(currentIndex - 1);
             setFlipped(false);
         }
     };
-    
+
     const markCorrect = () => {
         setCorrectCount(prev => prev + 1);
         handleNext();
     };
-    
+
     const markIncorrect = () => {
         setIncorrectCount(prev => prev + 1);
         handleNext();
     };
-    
+
     if (loading) {
         return (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
@@ -100,12 +100,12 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
             </div>
         );
     }
-    
+
     if (error) {
         return (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
                 <p style={{ color: '#ef4444', marginBottom: '1rem' }}>{error}</p>
-                <button 
+                <button
                     onClick={fetchFlashcards}
                     style={{ background: accent, border: 'none', padding: '0.8rem 1.5rem', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}
                 >
@@ -114,7 +114,7 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
             </div>
         );
     }
-    
+
     if (isFinished) {
         return (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
@@ -132,13 +132,13 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button 
+                    <button
                         onClick={fetchFlashcards}
                         style={{ background: 'transparent', border: `1px solid ${accent}`, padding: '0.8rem 1.5rem', borderRadius: '8px', color: accent, cursor: 'pointer' }}
                     >
                         Reintentar con nuevas
                     </button>
-                    <button 
+                    <button
                         onClick={onClose}
                         style={{ background: accent, border: 'none', padding: '0.8rem 1.5rem', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}
                     >
@@ -148,18 +148,18 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
             </div>
         );
     }
-    
+
     const card = flashcards[currentIndex];
-    
+
     return (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', maxWidth: '600px', margin: '0 auto', padding: '2rem' }}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
                 <span>{card.tipo === 'pregunta' ? 'Pregunta' : 'Completar'}</span>
                 <span>Tarjeta {currentIndex + 1} de {flashcards.length}</span>
             </div>
-            
+
             {/* Flashcard container with 3D perspective */}
-            <div 
+            <div
                 style={{
                     perspective: '1000px',
                     width: '100%',
@@ -195,7 +195,7 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
                             <RotateCw size={14} /> Click para voltear
                         </div>
                     </div>
-                    
+
                     {/* Back */}
                     <div style={{
                         position: 'absolute', width: '100%', height: '100%',
@@ -214,33 +214,33 @@ export default function FlashCardsDeck({ conceptId, accent, onClose }) {
                     </div>
                 </div>
             </div>
-            
+
             {/* Controls */}
             <div style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
-                <button 
+                <button
                     onClick={handlePrev}
                     disabled={currentIndex === 0}
                     style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '0.8rem', borderRadius: '50%', color: '#fff', cursor: currentIndex === 0 ? 'not-allowed' : 'pointer', opacity: currentIndex === 0 ? 0.3 : 1 }}
                 >
                     <ArrowLeft size={20} />
                 </button>
-                
+
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button 
+                    <button
                         onClick={markIncorrect}
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', padding: '0.8rem 1.5rem', borderRadius: '8px', color: '#f87171', cursor: 'pointer', fontWeight: 600 }}
                     >
                         <X size={18} /> Incorrecta
                     </button>
-                    <button 
+                    <button
                         onClick={markCorrect}
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', padding: '0.8rem 1.5rem', borderRadius: '8px', color: '#34d399', cursor: 'pointer', fontWeight: 600 }}
                     >
                         <Check size={18} /> Correcta
                     </button>
                 </div>
-                
-                <button 
+
+                <button
                     onClick={handleNext}
                     style={{ background: 'rgba(255,255,255,0.1)', border: 'none', padding: '0.8rem', borderRadius: '50%', color: '#fff', cursor: 'pointer' }}
                 >

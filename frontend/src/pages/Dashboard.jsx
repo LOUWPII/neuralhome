@@ -4,9 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Box, Trash2 } from 'lucide-react';
 import RoomCreationModal from '../components/RoomCreationModal';
+import { useTranslation } from '../contexts/useTranslation';
 
 export default function Dashboard() {
     const { user, signOut } = useAuth();
+    const { t, language } = useTranslation();
     const navigate = useNavigate();
     const [palaces, setPalaces] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -39,7 +41,7 @@ export default function Dashboard() {
     const handleDeletePalace = async (e, palaceId) => {
         e.stopPropagation(); // Don't navigate to the room
         
-        if (!window.confirm("¿Estás seguro de que quieres demoler esta habitación? Se perderán todos los conceptos y el contexto del PDF.")) {
+        if (!window.confirm(t('confirmDeletePalace'))) {
             return;
         }
 
@@ -69,7 +71,7 @@ export default function Dashboard() {
             
         } catch (error) {
             console.error("Error deleting palace:", error);
-            alert(`No se pudo eliminar la habitación: ${error.message}`);
+            alert(`${t('deleteFailed')}: ${error.message}`);
         }
     };
 
@@ -77,16 +79,16 @@ export default function Dashboard() {
         <div className="container" style={{ padding: '2rem 0', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <div>
-                    <h1 className="heading-glow" style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0 }}>NeuralHome</h1>
-                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>Architectural Blueprint - Level 1</p>
+                    <h1 className="heading-glow" style={{ fontSize: '2.5rem', fontWeight: 'bold', margin: 0 }}>{t('dashboardTitle')}</h1>
+                    <p style={{ color: 'var(--text-muted)', margin: 0 }}>{t('dashboardSubtitle')}</p>
                 </div>
-                <button onClick={handleSignOut} className="btn-outline">Sign Out</button>
+                <button onClick={handleSignOut} className="btn-outline">{t('signOut')}</button>
             </header>
 
             <section style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '1.5rem' }}>
                     <button className="btn-neon" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} onClick={() => setIsModalOpen(true)}>
-                        <Plus size={18} /> Construct New Room
+                        <Plus size={18} /> {t('constructNewRoom')}
                     </button>
                 </div>
 
@@ -105,11 +107,13 @@ export default function Dashboard() {
                 }}>
                     
                     {loading ? (
-                        <p style={{ color: 'var(--primary-bright)' }} className="animate-float">Scanning architectural data...</p>
+                        <p style={{ color: 'var(--primary-bright)' }} className="animate-float">{t('scanningData')}</p>
                     ) : palaces.length === 0 ? (
-                        <div className="flex-center" style={{ flexDirection: 'column', gap: '1rem', background: 'rgba(5, 0, 11, 0.8)', padding: '2rem', borderRadius: '12px', border: '1px dashed var(--border-neon)' }}>
-                            <p style={{ color: 'var(--text-muted)' }}>The House is empty. Start your Neural journey.</p>
-                            <button className="btn-neon" onClick={() => setIsModalOpen(true)}>Initialize Architect</button>
+                        <div key={language} className="flex-center" style={{ flexDirection: 'column', gap: '1rem', background: 'rgba(5, 0, 11, 0.8)', padding: '2rem', borderRadius: '12px', border: '1px dashed var(--border-neon)' }}>
+                            <p style={{ color: 'var(--text-muted)' }}>{t('emptyHouse')}</p>
+                            <button className="btn-neon" onClick={() => setIsModalOpen(true)}>
+                                {t('initializeArchitect') || (language === 'es' ? 'Inicializar Arquitecto' : 'Initialize Architect')}
+                            </button>
                         </div>
                     ) : (
                         <div style={{ 
@@ -165,8 +169,8 @@ export default function Dashboard() {
                                                     transition: 'all 0.2s'
                                                 }}
                                                 onMouseEnter={(e) => { e.currentTarget.style.color = '#ff4444'; e.currentTarget.style.background = 'rgba(255, 0, 0, 0.1)'; }}
-                                                onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255, 50, 50, 0.6)'; e.currentTarget.style.background = 'transparent'; }}
-                                                title="Eliminar Habitación"
+                                                 onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255, 50, 50, 0.6)'; e.currentTarget.style.background = 'transparent'; }}
+                                                title={t('deletePalace')}
                                             >
                                                 <Trash2 size={18} />
                                             </button>
@@ -175,11 +179,11 @@ export default function Dashboard() {
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--text-main)', fontSize: '0.9rem', opacity: 0.9 }}>
                                         <Box size={16} /> 
-                                        <span>{palace.subject || "Unassigned Subject"}</span>
+                                        <span>{palace.subject || t('unassignedSubject')}</span>
                                     </div>
                                     <div style={{ marginTop: 'auto', borderTop: '1px dashed rgba(124, 58, 237, 0.3)', paddingTop: '1rem' }}>
                                         <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic', margin: 0 }}>
-                                            {palace.description ? (palace.description.length > 50 ? palace.description.substring(0, 50) + "..." : palace.description) : "Awaiting architecture... Click to enter 3D"}
+                                            {palace.description ? (palace.description.length > 50 ? palace.description.substring(0, 50) + "..." : palace.description) : t('awaitingArchitecture')}
                                         </p>
                                     </div>
                                 </div>

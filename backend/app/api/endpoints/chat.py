@@ -247,10 +247,16 @@ async def feynman_voice(
     history_dicts = [{"role": m.role, "content": m.content} for m in req.history]
 
     # 5. Stream via SSE
-    import json
+    import json as _json
+    import asyncio
+
     async def event_generator():
         try:
-            for token in feynman_voice_stream(
+            # Run the sync streaming generator in a thread to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            
+            # Collect all args for the stream call
+            stream_kwargs = dict(
                 concept_label=concept_label,
                 anchor_label=anchor_label,
                 theme=theme,
@@ -258,10 +264,38 @@ async def feynman_voice(
                 user_message=req.message,
                 history=history_dicts,
                 language=language,
-            ):
-                safe_token = json.dumps({"token": token})
-                yield f"data: {safe_token}\n\n"
-            yield "data: [DONE]\n\n"
+            )
+            
+            # Use a queue to bridge sync generator → async
+            import queue, threading
+            q = queue.Queue()
+            
+            def run_stream():
+                try:
+                    for token_chunk in feynman_voice_stream(**stream_kwargs):
+                        q.put(("token", token_chunk))
+                    q.put(("done", None))
+                except Exception as exc:
+                    q.put(("error", str(exc)))
+            
+            thread = threading.Thread(target=run_stream, daemon=True)
+            thread.start()
+            
+            while True:
+                try:
+                    kind, value = await loop.run_in_executor(None, lambda: q.get(timeout=30))
+                    if kind == "token":
+                        safe_token = _json.dumps({"token": value})
+                        yield f"data: {safe_token}\n\n"
+                    elif kind == "done":
+                        yield "data: [DONE]\n\n"
+                        break
+                    elif kind == "error":
+                        yield f"data: [ERROR] {value}\n\n"
+                        break
+                except Exception:
+                    yield "data: [ERROR] stream timeout\n\n"
+                    break
         except Exception as e:
             print(f"[FeynmanVoice] stream error: {e}")
             yield f"data: [ERROR] {str(e)}\n\n"
@@ -271,3 +305,121 @@ async def feynman_voice(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Feynman Summary — generate detailed summary for a concept
+# ---------------------------------------------------------------------------
+
+class SummaryRequest(BaseModel):
+    concept_id: str
+    language: str = "en"
+
+@router.post("/generate-feynman-summary")
+async def generate_feynman_summary(
+    req: SummaryRequest,
+    supabase: SupabaseDep,
+    authorization: str = Header(None),
+):
+    """Generates an extensive Feynman summary for a concept using the LLM."""
+    import asyncio as _asyncio
+
+    # Auth
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    if not token:
+        raise HTTPException(status_code=401, detail="User not authenticated.")
+
+    try:
+        auth_response = supabase.auth.get_user(token)
+        if not auth_response or not auth_response.user:
+            raise HTTPException(status_code=401, detail="Invalid token.")
+        meta_lang = (auth_response.user.user_metadata or {}).get("language", "en")
+        language = req.language if req.language in ("en", "es") else meta_lang
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="Authentication failed.")
+
+    # Fetch concept
+    resp = supabase.table("concepts").select("label, context").eq("id", req.concept_id).single().execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Concept not found")
+
+    concept = resp.data
+    concept_label = concept.get("label", "")
+    context = concept.get("context", "")
+
+    language_directive = (
+        "Responde EXCLUSIVAMENTE en Español. Todo el texto debe estar en Español."
+        if language == "es"
+        else "Respond EXCLUSIVELY in English. All text must be in English."
+    )
+
+    prompt = f"""
+You are an elite educator specialized in the Feynman Technique.
+Your goal: explain '{concept_label}' in a clear, structured, visually scannable format.
+
+CONTEXT FROM PDF:
+---
+{context[:3000]}
+---
+
+OUTPUT RULES:
+- {language_directive}
+- Return ONLY a valid JSON object. No markdown fences. No extra text.
+- Be concise but complete. Max 30 words per bullet. Max 3 bullets per section.
+- Do NOT use markdown symbols like **, ##, --, etc. Plain text only.
+- All text must feel premium, modern, and educational.
+- The content must be DIFFERENT from the raw context above — synthesize, simplify, and reframe it.
+
+OUTPUT SCHEMA:
+{{
+  "intro": "One engaging sentence that hooks the reader into this topic. Max 25 words.",
+  "what_is": {{
+    "title": "Short section title (3-4 words)",
+    "bullets": ["Clear simple point 1", "Clear simple point 2", "Clear simple point 3"]
+  }},
+  "how_it_works": {{
+    "title": "Short section title (3-4 words)",
+    "bullets": ["Mechanism or step 1", "Mechanism or step 2", "Mechanism or step 3"]
+  }},
+  "why_it_matters": {{
+    "title": "Short section title (3-4 words)",
+    "bullets": ["Real-world relevance 1", "Real-world relevance 2"]
+  }},
+  "analogy": {{
+    "title": "Simple Analogy",
+    "text": "One concrete, vivid analogy using an everyday object or situation. Max 40 words."
+  }},
+  "key_points": ["Essential takeaway 1", "Essential takeaway 2", "Essential takeaway 3", "Essential takeaway 4"],
+  "mini_summary": "A single sentence that captures the entire concept. Max 20 words."
+}}
+"""
+
+    from app.services.llm_service import _client, _MAPPER_MODEL
+
+    def _call():
+        return _client.chat.completions.create(
+            model=_MAPPER_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=1200,
+            response_format={"type": "json_object"},
+        )
+
+    try:
+        response = await _asyncio.to_thread(_call)
+        raw = response.choices[0].message.content
+        import json as _json
+        structured = _json.loads(raw)
+
+        # Store as JSON string in DB so it can be re-parsed in the frontend
+        summary_str = _json.dumps(structured, ensure_ascii=False)
+        supabase.table("concepts").update({"feynman_summary": summary_str}).eq("id", req.concept_id).execute()
+
+        return {"summary": summary_str}
+    except Exception as e:
+        print(f"[Summary] LLM error: {e}")
+        raise HTTPException(status_code=503, detail="Summary generation failed. Try again.")

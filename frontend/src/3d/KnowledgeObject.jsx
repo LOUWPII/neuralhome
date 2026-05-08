@@ -98,9 +98,9 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
                 </div>
             </Html>
 
-            {/* Feynman Card — appears on hover, floats above the label */}
-            {hovered && concept.feynman_summary && (
-                <Html position={[0, 0.8, 0]} center style={{ pointerEvents: 'none', width: '240px', zIndex: 100 }}>
+            {/* Concept Summary Card — Appears on hover, just above the label */}
+            {hovered && concept.context && (
+                <Html position={[0, -height + 5, 0]} center style={{ pointerEvents: 'none', width: '260px', zIndex: 100 }}>
                     <div style={{
                         background: 'rgba(5,0,16,0.97)',
                         border: `1px solid ${colors.outline}`,
@@ -113,17 +113,12 @@ export default function KnowledgeObject({ concept, index = 0, theme = 'neon_dev'
                         boxShadow: `0 6px 24px rgba(0,0,0,0.5), 0 0 20px ${colors.outline}44`,
                         textAlign: 'center',
                     }}>
-                        <div style={{
-                            fontSize: '0.6rem',
-                            textTransform: 'uppercase',
-                            color: colors.hover,
-                            marginBottom: '6px',
-                            fontWeight: 'bold',
-                            letterSpacing: '1px'
-                        }}>
-                            Feynman Summary
+                        <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: colors.hover, marginBottom: '8px', fontWeight: 'bold', letterSpacing: '1px' }}>
+                            Resumen
                         </div>
-                        {concept.feynman_summary}
+                        {concept.context.length > 180
+                            ? concept.context.slice(0, 180).trimEnd() + '…'
+                            : concept.context}
                     </div>
                 </Html>
             )}

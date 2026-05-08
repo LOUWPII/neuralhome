@@ -184,27 +184,73 @@ export default function RoomCreationModal({ isOpen, onClose }) {
                         </div>
 
                         {/* RIGHT — CONFIGURATION */}
-                        <div style={{ flex: '1', padding: '2rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
-                            <h2 style={{ fontSize: '1.25rem', color: 'var(--text-main)', margin: 0 }}>New Room</h2>
-
-                            {error && <div style={{ color: '#f87171', background: 'rgba(239,68,68,0.1)', padding: '0.75rem 1rem', borderRadius: '8px', fontSize: '0.875rem' }}>{error}</div>}
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Room Title:</label>
-                                    <input className="input-field" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Advanced Calculus" />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Subject:</label>
-                                    <input className="input-field" value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Mathematics" />
-                                </div>
+                        <div style={{
+                            flex: '1',
+                            padding: '2rem',
+                            overflowY: 'auto',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1.5rem',
+                            minWidth: 0,
+                            background: 'linear-gradient(180deg, rgba(10,0,30,0.6) 0%, rgba(5,0,14,0.8) 100%)',
+                        }}>
+                            {/* Section header */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{
+                                    width: 3, height: 28,
+                                    background: 'linear-gradient(180deg, #c026d3, #7c3aed)',
+                                    borderRadius: '2px',
+                                    boxShadow: '0 0 10px #c026d388',
+                                }} />
+                                <h2 style={{
+                                    fontSize: '1.3rem',
+                                    fontWeight: 800,
+                                    color: '#f8fafc',
+                                    margin: 0,
+                                    letterSpacing: '-0.3px',
+                                }}>
+                                    New Room
+                                </h2>
                             </div>
 
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Study Objectives:</label>
-                                <input className="input-field" value={objectives} onChange={e => setObjectives(e.target.value)} placeholder="e.g. Master integration techniques" />
+                            {error && (
+                                <div style={{
+                                    color: '#fca5a5',
+                                    background: 'rgba(239,68,68,0.08)',
+                                    border: '1px solid rgba(239,68,68,0.25)',
+                                    padding: '0.75rem 1rem',
+                                    borderRadius: '10px',
+                                    fontSize: '0.85rem',
+                                    lineHeight: 1.5,
+                                }}>
+                                    {error}
+                                </div>
+                            )}
+
+                            {/* ── Room Title + Subject row ─────────────────── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <NeonField
+                                    label="Room Title"
+                                    value={title}
+                                    onChange={e => setTitle(e.target.value)}
+                                    placeholder="e.g. Advanced Calculus"
+                                    icon="◈"
+                                    required
+                                />
+                                <NeonField
+                                    label="Subject"
+                                    value={subject}
+                                    onChange={e => setSubject(e.target.value)}
+                                    placeholder="e.g. Mathematics"
+                                    icon="⬡"
+                                />
                             </div>
 
+                            {/* ── Study Objectives — hero field ────────────── */}
+                            <ObjectivesField
+                                value={objectives}
+                                onChange={e => setObjectives(e.target.value)}
+                            />
 
 
                             {/* UPLOADS SECTION */}
@@ -262,10 +308,44 @@ export default function RoomCreationModal({ isOpen, onClose }) {
                                 </div>
                             </div>
 
+                            {/* CONSTRUCT BUTTON */}
                             <button
-                                className="btn-neon"
-                                style={{ marginTop: 'auto', width: '100%', opacity: (file && title) ? 1 : 0.45, pointerEvents: (file && title) ? 'auto' : 'none' }}
                                 onClick={handleUpload}
+                                disabled={!(file && title)}
+                                style={{
+                                    marginTop: 'auto',
+                                    width: '100%',
+                                    padding: '0.95rem',
+                                    borderRadius: '12px',
+                                    border: 'none',
+                                    cursor: (file && title) ? 'pointer' : 'not-allowed',
+                                    fontFamily: 'inherit',
+                                    fontSize: '0.92rem',
+                                    fontWeight: 700,
+                                    letterSpacing: '0.5px',
+                                    color: (file && title) ? '#fff' : 'rgba(255,255,255,0.3)',
+                                    background: (file && title)
+                                        ? 'linear-gradient(135deg, #7c3aed 0%, #c026d3 100%)'
+                                        : 'rgba(124,58,237,0.12)',
+                                    boxShadow: (file && title)
+                                        ? '0 0 28px rgba(192,38,211,0.35), 0 4px 16px rgba(124,58,237,0.3)'
+                                        : 'none',
+                                    transition: 'all 0.25s ease',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                }}
+                                onMouseEnter={e => {
+                                    if (file && title) {
+                                        e.currentTarget.style.boxShadow = '0 0 40px rgba(192,38,211,0.5), 0 6px 24px rgba(124,58,237,0.45)';
+                                        e.currentTarget.style.transform = 'translateY(-1px)';
+                                    }
+                                }}
+                                onMouseLeave={e => {
+                                    e.currentTarget.style.boxShadow = (file && title)
+                                        ? '0 0 28px rgba(192,38,211,0.35), 0 4px 16px rgba(124,58,237,0.3)'
+                                        : 'none';
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                }}
                             >
                                 Construct the New Room
                             </button>
@@ -273,7 +353,202 @@ export default function RoomCreationModal({ isOpen, onClose }) {
                     </>
                 )}
             </div>
-            <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+            <style>{`
+                @keyframes spin { 100% { transform: rotate(360deg); } }
+                @keyframes neonFocusPulse {
+                    0%   { box-shadow: 0 0 0 0 rgba(192,38,211,0); }
+                    50%  { box-shadow: 0 0 0 3px rgba(192,38,211,0.18); }
+                    100% { box-shadow: 0 0 0 0 rgba(192,38,211,0); }
+                }
+            `}</style>
+        </div>
+    );
+}
+
+/* ── NeonField — premium dark input with glow ─────────────────────────── */
+function FieldLabel({ icon, text, required }) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.55rem' }}>
+            <span style={{ fontSize: '0.7rem', color: '#c026d3', lineHeight: 1 }}>{icon}</span>
+            <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '1.2px',
+                color: '#ffffff',
+                textShadow: 'none',
+            }}>
+                {text}
+            </span>
+            {required && (
+                <span style={{ fontSize: '0.65rem', color: '#c026d3', marginLeft: '2px' }}>*</span>
+            )}
+        </div>
+    );
+}
+
+function NeonField({ label, value, onChange, placeholder, icon, required }) {
+    const [focused, setFocused] = React.useState(false);
+    const hasValue = value.length > 0;
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <FieldLabel icon={icon} text={label} required={required} />
+            <div style={{ position: 'relative' }}>
+                <input
+                    type="text"
+                    value={value}
+                    onChange={onChange}
+                    placeholder={placeholder}
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    style={{
+                        width: '100%',
+                        padding: '0.7rem 0.95rem',
+                        background: focused
+                            ? 'rgba(124,58,237,0.1)'
+                            : hasValue
+                                ? 'rgba(124,58,237,0.07)'
+                                : 'rgba(255,255,255,0.03)',
+                        border: focused
+                            ? '1px solid rgba(192,38,211,0.7)'
+                            : hasValue
+                                ? '1px solid rgba(124,58,237,0.4)'
+                                : '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: '10px',
+                        color: '#f1f5f9',
+                        fontFamily: 'inherit',
+                        fontSize: '0.88rem',
+                        outline: 'none',
+                        transition: 'all 0.2s ease',
+                        boxSizing: 'border-box',
+                        boxShadow: focused
+                            ? '0 0 0 3px rgba(192,38,211,0.12), 0 0 16px rgba(192,38,211,0.1)'
+                            : 'none',
+                        caretColor: '#c026d3',
+                    }}
+                />
+                {/* Bottom accent line on focus */}
+                <div style={{
+                    position: 'absolute',
+                    bottom: 0, left: '10%', right: '10%',
+                    height: '1px',
+                    background: 'linear-gradient(90deg, transparent, #c026d3, #7c3aed, transparent)',
+                    opacity: focused ? 1 : 0,
+                    transition: 'opacity 0.25s ease',
+                    borderRadius: '1px',
+                }} />
+            </div>
+        </div>
+    );
+}
+
+/* ── ObjectivesField — hero textarea with enhanced visual weight ──────── */
+function ObjectivesField({ value, onChange }) {
+    const [focused, setFocused] = React.useState(false);
+    const hasValue = value.length > 0;
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {/* Label row with "primary field" badge */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.55rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#c026d3', lineHeight: 1 }}>◈</span>
+                    <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '1.2px',
+                        color: '#ffffff',
+                        textShadow: 'none',
+                    }}>
+                        Study Objectives
+                    </span>
+                </div>
+                <span style={{
+                    fontSize: '0.6rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    color: '#c026d3',
+                    background: 'rgba(192,38,211,0.1)',
+                    border: '1px solid rgba(192,38,211,0.25)',
+                    padding: '2px 8px',
+                    borderRadius: '20px',
+                }}>
+                    Primary
+                </span>
+            </div>
+
+            {/* Outer glow wrapper */}
+            <div style={{
+                borderRadius: '12px',
+                padding: '1px',
+                background: focused
+                    ? 'linear-gradient(135deg, rgba(192,38,211,0.6), rgba(124,58,237,0.4))'
+                    : hasValue
+                        ? 'linear-gradient(135deg, rgba(124,58,237,0.3), rgba(192,38,211,0.2))'
+                        : 'linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.04))',
+                transition: 'all 0.25s ease',
+                boxShadow: focused
+                    ? '0 0 24px rgba(192,38,211,0.2), 0 0 48px rgba(124,58,237,0.1)'
+                    : 'none',
+            }}>
+                <div style={{
+                    borderRadius: '11px',
+                    background: focused
+                        ? 'rgba(124,58,237,0.1)'
+                        : hasValue
+                            ? 'rgba(124,58,237,0.06)'
+                            : 'rgba(5,0,14,0.8)',
+                    padding: '0.85rem 1rem',
+                    transition: 'background 0.2s ease',
+                }}>
+                    {/* Hint text above textarea */}
+                    <p style={{
+                        margin: '0 0 0.5rem',
+                        fontSize: '0.72rem',
+                        color: focused ? 'rgba(192,38,211,0.7)' : 'rgba(255,255,255,0.2)',
+                        letterSpacing: '0.3px',
+                        transition: 'color 0.2s',
+                    }}>
+                        Define what you want to master from this material
+                    </p>
+                    <textarea
+                        value={value}
+                        onChange={onChange}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
+                        placeholder="e.g. Master integration techniques, understand convergence theorems, apply to real-world problems..."
+                        rows={3}
+                        style={{
+                            width: '100%',
+                            background: 'transparent',
+                            border: 'none',
+                            outline: 'none',
+                            color: '#f1f5f9',
+                            fontFamily: 'inherit',
+                            fontSize: '0.88rem',
+                            lineHeight: 1.6,
+                            resize: 'none',
+                            caretColor: '#c026d3',
+                            boxSizing: 'border-box',
+                        }}
+                    />
+                    {/* Character count */}
+                    {hasValue && (
+                        <div style={{
+                            textAlign: 'right',
+                            fontSize: '0.65rem',
+                            color: 'rgba(192,38,211,0.5)',
+                            marginTop: '0.25rem',
+                            letterSpacing: '0.5px',
+                        }}>
+                            {value.length} chars
+                        </div>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

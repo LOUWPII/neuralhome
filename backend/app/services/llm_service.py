@@ -3,6 +3,7 @@ LLM Service - Provider-Agnostic Wrapper
 Currently backed by Groq via OpenAI-compatible API.
 """
 import json
+import asyncio
 from openai import OpenAI
 from app.core.config import settings
 
@@ -142,12 +143,15 @@ async def architect_chat(user_message: str, history: list[dict] | None = None) -
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    response = _client.chat.completions.create(
-        model=_ARCHITECT_MODEL,
-        messages=messages,
-        temperature=0.7,
-        max_tokens=512,
-    )
+    def _call():
+        return _client.chat.completions.create(
+            model=_ARCHITECT_MODEL,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=512,
+        )
+
+    response = await asyncio.to_thread(_call)
     return response.choices[0].message.content
 
 
@@ -171,6 +175,32 @@ async def extract_palace_from_chunks(combined_text: str, theme: str = "neon_dev"
 
     print(f"[LLMService] Mapping to theme '{theme}' with {len(anchors)} anchors")
 
+    try:
+        system_prompt = PALACE_EXTRACTION_PROMPT.format(num_anchors=len(anchors))
+
+        def _call():
+            return _client.chat.completions.create(
+                model=_MAPPER_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt_input},
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+                max_tokens=4096,
+            )
+
+        response = await asyncio.to_thread(_call)
+        raw_text = response.choices[0].message.content
+        print(f"[LLMService] Extract response: {len(raw_text)} chars")
+        return json.loads(raw_text)
+
+    except json.JSONDecodeError as e:
+        print(f"[LLMService] JSON parse error: {e}")
+        raise ValueError("LLM returned invalid JSON") from e
+    except Exception as e:
+        print(f"[LLMService] Error: {type(e).__name__}: {e}")
+        raise
     system_prompt = PALACE_EXTRACTION_PROMPT.format(num_anchors=len(anchors))
 
     MAX_RETRIES = 3
@@ -283,12 +313,15 @@ async def chat_about_concept(
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    response = _client.chat.completions.create(
-        model=_ARCHITECT_MODEL,  # Socratic chat uses fast 8B for low latency
-        messages=messages,
-        temperature=0.65,        # Slightly lower than architect → more consistent pedagogy
-        max_tokens=512,
-    )
+    def _call():
+        return _client.chat.completions.create(
+            model=_ARCHITECT_MODEL,
+            messages=messages,
+            temperature=0.65,
+            max_tokens=512,
+        )
+
+    response = await asyncio.to_thread(_call)
     return response.choices[0].message.content
 
 
@@ -382,4 +415,3 @@ def feynman_voice_stream(
         delta = chunk.choices[0].delta
         if delta.content:
             yield delta.content
-

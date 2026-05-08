@@ -7,9 +7,11 @@ import { RoomEnvironment } from '../3d/RoomEnvironment';
 import KnowledgeObject from '../3d/KnowledgeObject';
 import { FirstPersonControls } from '../3d/FirstPersonControls';
 import { ArrowLeft } from 'lucide-react';
+import { useTranslation } from '../contexts/useTranslation';
 
 export default function PalaceView() {
     const { id } = useParams();
+    const { t } = useTranslation();
     const navigate = useNavigate();
     const [palace, setPalace] = useState(null);
     const [concepts, setConcepts] = useState([]);
@@ -21,23 +23,17 @@ export default function PalaceView() {
     useEffect(() => {
         async function loadPalaceData() {
             try {
-                const { data: palaceData, error: palaceError } = await supabase
-                    .from('palaces')
-                    .select('*')
-                    .eq('id', id)
-                    .single();
+                const [palaceResp, conceptsResp] = await Promise.all([
+                    supabase.from('palaces').select('*').eq('id', id).single(),
+                    supabase.from('concepts').select('*').eq('palace_id', id)
+                ]);
 
-                if (palaceError) throw palaceError;
+                if (palaceResp.error) throw palaceResp.error;
+                if (conceptsResp.error) throw conceptsResp.error;
 
-                if (palaceData) {
-                    setPalace(palaceData);
-                    const { data: conceptData, error: conceptError } = await supabase
-                        .from('concepts')
-                        .select('*')
-                        .eq('palace_id', id);
-
-                    if (conceptError) throw conceptError;
-                    if (conceptData) setConcepts(conceptData);
+                if (palaceResp.data) {
+                    setPalace(palaceResp.data);
+                    if (conceptsResp.data) setConcepts(conceptsResp.data);
                 }
             } catch (err) {
                 console.error("Error loading palace:", err);
@@ -102,7 +98,7 @@ export default function PalaceView() {
     if (loading) {
         return (
             <div className="flex-center" style={{ height: '100vh', background: 'var(--bg-dark)' }}>
-                <h2 className="heading-glow animate-float">Initializing Spatial Interface...</h2>
+                <h2 className="heading-glow animate-float">{t('initializingSpatial')}</h2>
             </div>
         );
     }
@@ -110,8 +106,8 @@ export default function PalaceView() {
     if (!palace) {
         return (
             <div className="flex-center" style={{ height: '100vh', flexDirection: 'column', gap: '1rem' }}>
-                <h2 style={{ color: '#ef4444' }}>Palace Not Found</h2>
-                <button className="btn-outline" onClick={() => navigate('/dashboard')}>Return to Library</button>
+                <h2 style={{ color: '#ef4444' }}>{t('palaceNotFound')}</h2>
+                <button className="btn-outline" onClick={() => navigate('/dashboard')}>{t('returnToLibrary')}</button>
             </div>
         );
     }
@@ -151,7 +147,7 @@ export default function PalaceView() {
                         style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '0.5rem', pointerEvents: 'auto', background: 'rgba(5,0,11,0.5)', backdropFilter: 'blur(5px)' }}
                         onClick={() => navigate('/dashboard')}
                     >
-                        <ArrowLeft size={16} /> Library
+                        <ArrowLeft size={16} /> {t('library')}
                     </button>
                 </div>
 

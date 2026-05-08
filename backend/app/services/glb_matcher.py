@@ -1,169 +1,123 @@
 """
 GLB Matcher Service
 ===================
-Maps free-text object descriptions (from the vision AI) to the best-matching
-.glb model available in /public/models/.
-
-Design goals:
-  1. The vision model describes what it ACTUALLY SEES (no type restrictions).
-  2. This module finds the closest .glb for each described object.
-  3. Scoring is keyword-based (fast, no API needed) — fully offline.
-  4. Adding new .glb files in the future only requires adding a new entry here.
-
-Available models (auto-discovered from this catalog):
-  bed.glb | desk.glb | chair.glb | bookshelf.glb | lamp.glb | plant.glb
+Dynamically scans the frontend/public/models directory and uses an LLM to 
+map free-text object descriptions (from the vision AI) to the best-matching
+.glb model available. This guarantees no hardcoding!
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GLB Catalog
-# Each entry represents one available .glb asset.
-# "keywords" are matched (case-insensitive) against the vision model's
-# raw_type + label + material_hint string.
-# "score_boost" adds extra weight for strong matches.
-# ─────────────────────────────────────────────────────────────────────────────
+import os
+import json
+import asyncio
+from openai import AsyncOpenAI
+from app.core.config import settings
 
-_GLB_CATALOG: list[dict] = [
-    {
-        "glb_type": "bed",
-        "glb_file": "bed.glb",
-        "display": "Bed",
-        "keywords": [
-            "bed", "mattress", "bunk", "cot", "futon", "sleeping",
-            "single bed", "double bed", "queen", "king",
-        ],
-        "score_boost": {"bed": 5, "mattress": 4},
-    },
-    {
-        "glb_type": "desk",
-        "glb_file": "desk.glb",
-        "display": "Desk / Table",
-        "keywords": [
-            "desk", "table", "nightstand", "side table", "end table",
-            "coffee table", "dining table", "vanity", "console",
-            "tv stand", "media unit", "workbench", "dresser",
-            "bedside", "side cabinet",
-        ],
-        "score_boost": {"desk": 5, "nightstand": 4, "table": 3},
-    },
-    {
-        "glb_type": "chair",
-        "glb_file": "chair.glb",
-        "display": "Chair / Seating",
-        "keywords": [
-            "chair", "sofa", "couch", "armchair", "bench", "seat",
-            "stool", "ottoman", "settee", "loveseat", "recliner",
-            "lounge", "rocking chair", "office chair",
-        ],
-        "score_boost": {"chair": 5, "sofa": 4, "couch": 4},
-    },
-    {
-        "glb_type": "bookshelf",
-        "glb_file": "bookshelf.glb",
-        "display": "Bookshelf / Wardrobe / Cabinet",
-        "keywords": [
-            "bookshelf", "bookcase", "shelf", "shelving", "wardrobe",
-            "closet", "armoire", "cabinet", "hutch", "cupboard",
-            "chest of drawers", "chest", "drawers", "storage unit",
-            "dresser cabinet",
-        ],
-        "score_boost": {"wardrobe": 5, "bookshelf": 5, "cabinet": 4, "shelf": 3},
-    },
-    {
-        "glb_type": "lamp",
-        "glb_file": "lamp.glb",
-        "display": "Lamp / Light",
-        "keywords": [
-            "lamp", "light", "floor lamp", "table lamp", "pendant",
-            "chandelier", "sconce", "spotlight", "reading lamp",
-            "lighting", "luminaire",
-        ],
-        "score_boost": {"lamp": 5, "floor lamp": 5, "light": 3},
-    },
-    {
-        "glb_type": "plant",
-        "glb_file": "plant.glb",
-        "display": "Plant / Greenery",
-        "keywords": [
-            "plant", "tree", "flower", "pot", "succulent", "fern",
-            "indoor plant", "potted", "vase", "greenery", "bush",
-            "cactus", "palm",
-        ],
-        "score_boost": {"plant": 5, "potted": 4, "tree": 3},
-    },
-]
+def get_available_glbs() -> list[str]:
+    """Scans frontend/public/models for .glb files and returns their basenames."""
+    models_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../frontend/public/models"))
+    if not os.path.exists(models_dir):
+        print(f"[GLBMatcher] Warning: Models directory not found at {models_dir}")
+        return ["desk", "bed", "chair", "bookshelf", "lamp", "plant"]
+    
+    available = []
+    for f in os.listdir(models_dir):
+        if f.endswith(".glb") and f != "window.glb":
+            available.append(f.replace(".glb", ""))
+    
+    return available or ["desk"]
 
-# Build a quick-lookup set of all valid glb_types
-VALID_GLB_TYPES: set[str] = {entry["glb_type"] for entry in _GLB_CATALOG}
-
-
-def match_to_glb(raw_type: str, label: str = "", material_hint: str = "") -> dict:
+async def match_objects(objects: list[dict]) -> list[dict]:
     """
-    Given a free-text description of an object, return the best-matching
-    GLB entry from the catalog.
-
-    Parameters
-    ----------
-    raw_type      : str – What the vision AI says the object is
-                          (e.g. "wooden wardrobe", "leather sofa")
-    label         : str – Short display label from the vision AI
-    material_hint : str – Material from the vision AI (e.g. "wood", "fabric")
-
-    Returns
-    -------
-    dict with keys: glb_type, glb_file, display, confidence (0.0-1.0)
+    Uses the fast Groq model to dynamically map the raw vision objects to
+    the closest available .glb files on disk.
     """
-    # Concatenate everything into one searchable string
-    search_text = f"{raw_type} {label} {material_hint}".lower()
+    if not objects:
+        return []
 
-    best_entry = _GLB_CATALOG[0]  # fallback to first entry
-    best_score = -1
-
-    for entry in _GLB_CATALOG:
-        score = 0
-
-        # Base keyword matching
-        for kw in entry["keywords"]:
-            if kw in search_text:
-                score += 1
-
-        # Score boosts for primary keywords
-        for kw, boost in entry.get("score_boost", {}).items():
-            if kw in search_text:
-                score += boost
-
-        if score > best_score:
-            best_score = score
-            best_entry = entry
-
-    # Confidence: normalize by max possible score (sum of all boosts)
-    max_score = sum(entry.get("score_boost", {}).values() or [1]) or 1
-    confidence = min(1.0, best_score / max_score) if best_score > 0 else 0.1
-
-    result = {
-        "glb_type":   best_entry["glb_type"],
-        "glb_file":   best_entry["glb_file"],
-        "display":    best_entry["display"],
-        "confidence": round(confidence, 2),
-    }
-
-    print(
-        f"[GLBMatcher] '{raw_type}' + '{label}' "
-        f"→ {result['glb_type']} (score={best_score}, conf={result['confidence']})"
+    available_glbs = get_available_glbs()
+    
+    # Give the LLM a list of objects to map
+    detect_list = [
+        {"id": i, "description": f"{o.get('raw_type', 'unknown')} (Material: {o.get('material_hint', 'unknown')})"}
+        for i, o in enumerate(objects)
+    ]
+    
+    prompt = f"""
+    You are an AI mapping assistant for a 3D simulation.
+    We have a list of physical objects detected in a room photo.
+    We need to map EACH object to the closest matching 3D model we have available.
+    
+    AVAILABLE MODELS:
+    {json.dumps(available_glbs)}
+    
+    DETECTED OBJECTS:
+    {json.dumps(detect_list)}
+    
+    CRITICAL RULES: 
+    1. For each object, you MUST choose exactly one string from the AVAILABLE MODELS list.
+    2. If nothing matches perfectly, choose the closest semantic match. Example:
+       - 'nightstand', 'dresser', 'vanity' -> 'desk' (if no dresser model exists)
+       - 'sofa', 'couch', 'stool' -> 'chair' (if no sofa model exists)
+       - 'wardrobe', 'cabinet' -> 'bookshelf'
+    
+    Return ONLY a JSON object with a single key "mappings", which is an array of objects.
+    Example:
+    {{
+      "mappings": [
+         {{"id": 0, "matched_model": "bed"}},
+         {{"id": 1, "matched_model": "desk"}}
+      ]
+    }}
+    """
+    
+    client = AsyncOpenAI(
+        api_key=settings.groq_api_key,
+        base_url="https://api.groq.com/openai/v1",
     )
-    return result
+    
+    # Fallback default mapping in case of LLM failure
+    fallback_mapping = {i: "desk" for i in range(len(objects))}
+    
+    try:
+        response = await client.chat.completions.create(
+            model="llama-3.1-8b-instant",  # Fast model
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            response_format={"type": "json_object"}
+        )
+        
+        content = response.choices[0].message.content
+        result = json.loads(content)
+        mappings = result.get("mappings", [])
+        
+        # Build dictionary from LLM response
+        mapped_dict = {}
+        for m in mappings:
+            idx = m.get("id")
+            model = m.get("matched_model")
+            # Enforce that the model actually exists
+            if model not in available_glbs:
+                model = "desk"
+            mapped_dict[idx] = model
+            
+    except Exception as e:
+        print(f"[GLBMatcher] LLM mapping failed: {e}. Using fallback.")
+        mapped_dict = fallback_mapping
 
-
-def match_objects(objects: list[dict]) -> list[dict]:
-    """
-    Runs match_to_glb on every detected object and injects the result
-    under the key 'glb_match'. Does NOT modify other fields.
-    """
-    for obj in objects:
-        raw_type = obj.get("raw_type", obj.get("type", "unknown"))
-        label    = obj.get("label", "")
-        material = obj.get("material_hint", "")
-        obj["glb_match"] = match_to_glb(raw_type, label, material)
-        # Also set the canonical "type" field to the matched glb_type so the
-        # rest of the pipeline (anchors, concepts) can use it uniformly.
-        obj["type"] = obj["glb_match"]["glb_type"]
+    # Apply the mapping to the objects list
+    for i, obj in enumerate(objects):
+        glb_type = mapped_dict.get(i, "desk")
+        
+        # Inject standard GLB Match dictionary structure expected by ingest.py
+        obj["glb_match"] = {
+            "glb_type": glb_type,
+            "glb_file": f"{glb_type}.glb",
+            "display": glb_type.title(),
+            "confidence": 0.8
+        }
+        # Also set the canonical "type" field
+        obj["type"] = glb_type
+        
+        print(f"[GLBMatcher] '{obj.get('raw_type')}' → {glb_type}.glb")
+        
     return objects

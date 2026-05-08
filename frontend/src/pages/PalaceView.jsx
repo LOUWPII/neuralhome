@@ -123,14 +123,25 @@ export default function PalaceView() {
     // or sensible defaults. The vision_service already clamps these to 3-15m.
     const rawDims = palace.dynamic_config || {};
     const roomDimensions = {
-        width:  Math.max(3, Math.min(parseFloat(rawDims.width)  || 5, 15)),
-        height: Math.max(2.2, Math.min(parseFloat(rawDims.height) || 2.5, 4)),
-        depth:  Math.max(3, Math.min(parseFloat(rawDims.depth)  || 5, 15)),
+        width:      Math.max(3, Math.min(parseFloat(rawDims.width)  || 5, 15)),
+        height:     Math.max(2.2, Math.min(parseFloat(rawDims.height) || 2.5, 4)),
+        depth:      Math.max(3, Math.min(parseFloat(rawDims.depth)  || 5, 15)),
+        // Aesthetics from vision AI — pass through as-is (already validated on backend)
+        aesthetics: rawDims.aesthetics || {},
     };
     const roomHalf = Math.max(roomDimensions.width, roomDimensions.depth) / 2;
 
+    // Enforce 1 concept per anchor — keep the first one assigned to each anchor_id
+    const seenAnchors = new Set();
+    const uniqueConcepts = concepts.filter(c => {
+        const aid = c.anchor_id || c.id;
+        if (seenAnchors.has(aid)) return false;
+        seenAnchors.add(aid);
+        return true;
+    });
+
     return (
-        <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
+        <div style={{ width: '100vw', height: '100vh', position: 'relative', overflow: 'hidden', background: '#000000' }}>
 
             {/* HUD overlay layer */}
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', padding: '1.5rem', zIndex: 10, display: 'flex', justifyContent: 'space-between', pointerEvents: 'none' }}>
@@ -178,17 +189,21 @@ export default function PalaceView() {
                 </div>
             </div>
 
-            {/* R3F Canvas — pointer-events stay enabled so the user keeps control */}
-            <Canvas camera={{ fov: 75, near: 0.1, far: 200, position: [0, 1.8, roomHalf - 0.2] }} shadows>
+            {/* R3F Canvas — fills the entire viewport behind the HUD */}
+            <Canvas
+                style={{ position: 'absolute', inset: 0 }}
+                camera={{ fov: 75, near: 0.1, far: 200, position: [0, 1.8, roomHalf - 0.2] }}
+                shadows
+            >
                 <Physics gravity={[0, -9.8, 0]}>
                     <RoomEnvironment 
                         theme={theme} 
-                        concepts={concepts} 
+                        concepts={uniqueConcepts} 
                         roomDimensions={roomDimensions} 
                         hoveredConceptId={hoveredConceptId}
                         selectedForSwapId={selectedForSwap?.id}
                     />
-                    {concepts.map((concept, index) => (
+                    {uniqueConcepts.map((concept, index) => (
                         <KnowledgeObject
                             key={concept.id}
                             concept={concept}

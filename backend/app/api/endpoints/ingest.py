@@ -193,7 +193,7 @@ async def ingest_photo_pdf(
         # ── Step 2: GLB Matching — map raw descriptions to available .glb ─────
         # This is the dynamic semantic matching step:
         # "wooden wardrobe" → bookshelf.glb, "leather sofa" → chair.glb, etc.
-        objects = match_objects(objects)
+        objects = await match_objects(objects)
         print(f"[Ingest] GLB matches: { {o['raw_type']: o['glb_match']['glb_type'] for o in objects} }")
 
         # ── Step 3: Build dynamic anchors for the RAG LLM ────────────────────
@@ -228,7 +228,10 @@ async def ingest_photo_pdf(
             "subject": subject,
             "description": description or "Dynamic Palace from Photo",
             "objectives": objectives,
-            "dynamic_config": room_data.get("room_dimensions", {})
+            "dynamic_config": {
+                **room_data.get("room_dimensions", {}),
+                "aesthetics": room_data.get("room_aesthetics", {})
+            }
         }).execute()
 
         if not palace_resp.data:
@@ -240,12 +243,34 @@ async def ingest_photo_pdf(
         # ── Step 6: Save Concepts with full vision + GLB metadata ─────────────
         concepts_to_insert = []
         anchor_map = {a["id"]: a for a in dynamic_anchors}
+        used_anchor_ids = set()  # enforce 1 concept per anchor at insert time
 
         for concept in palace_data.get("concepts", []):
             anchor_id   = concept.get("anchor_id")
+            # Skip if this anchor already has a concept (LLM post-processing should
+            # prevent this, but guard here as a second line of defence)
+            if anchor_id in used_anchor_ids:
+                print(f"[Ingest] Skipping duplicate anchor_id '{anchor_id}' for concept '{concept.get('label')}'")
+                continue
+            used_anchor_ids.add(anchor_id)
+
             anchor_info = anchor_map.get(anchor_id, {})
             vision_obj  = anchor_info.get("raw_vision_data", {})
             glb_match   = vision_obj.get("glb_match", {})
+
+            # Derive rotation_y from wall_side so objects face inward
+            import math as _math
+            wall_side = vision_obj.get("wall_side", "none").lower()
+            _WALL_ROTATIONS = {
+                "left":  90,   # object on left wall faces right (+x)
+                "right": -90,  # object on right wall faces left (-x)
+                "back":  180,  # object on back wall faces camera (+z)
+                "far":   180,
+                "front": 0,
+                "near":  0,
+                "none":  0,
+            }
+            rotation_y = _WALL_ROTATIONS.get(wall_side, vision_obj.get("rotation_y", 0))
 
             row = {
                 "palace_id":      palace_id,
@@ -262,11 +287,13 @@ async def ingest_photo_pdf(
                 "glb_model":      glb_match.get("glb_file", "desk.glb"),
                 "hex_color":      vision_obj.get("color", "#c8b89a"),
                 "material_props": {
-                    "material":    vision_obj.get("material_hint", "wood"),
-                    "raw_type":    vision_obj.get("raw_type", ""),
-                    "glb_type":    glb_match.get("glb_type", "desk"),
-                    "confidence":  glb_match.get("confidence", 0.5),
-                    "dimensions":  vision_obj.get("dimensions", {"width": 1.0, "height": 1.0, "depth": 1.0}),
+                    "raw_type":      vision_obj.get("raw_type"),
+                    "material_hint": vision_obj.get("material_hint"),
+                    "dimensions":    vision_obj.get("dimensions"),
+                    "glb_type":      glb_match.get("glb_type"),
+                    "wall_side":     wall_side,
+                    "rotation_y":    rotation_y,
+                    "confidence":    glb_match.get("confidence", 0.5)
                 }
             }
 

@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
-import { Stars, Html } from '@react-three/drei';
+import React, { useRef, Suspense } from 'react';
+import * as THREE from 'three';
+import { Stars, Html, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { usePlane, useBox, useCylinder } from '@react-three/cannon';
 import { ROOM_ANCHORS } from './roomAnchors';
@@ -481,9 +482,312 @@ function SiliconValleyRoom() {
 }
 
 // ─────────────────────────────────────────
+// TEMPLATE 3: Dynamic Room (from photo)
+// ─────────────────────────────────────────
+
+/**
+ * Loads a real .glb model and scales it per-axis to match vision AI dimensions.
+ * Uses Box3 to measure the raw GLB, then applies independent x/y/z scale factors.
+ */
+function GLBFurniture({ glbPath, color = '#8B4513', position, type, dimensions, isHovered, isSelected, rotation = 0 }) {
+    const { scene } = useGLTF(glbPath);
+
+    const cloned = React.useMemo(() => {
+        const c = scene.clone(true);
+
+        c.traverse((child) => {
+            if (child.isMesh && child.material) {
+                // Safely handle both single material and array of materials
+                const materials = Array.isArray(child.material) ? child.material : [child.material];
+                
+                const clonedMaterials = materials.map(mat => {
+                    const m = mat.clone();
+                    
+                    // Only tint if it has a color property
+                    if (color && color !== '#FFFFFF' && m.color) {
+                        m.color.set(color);
+                    }
+                    
+                    // Hover/select: brighten the emissive so it glows
+                    if (isSelected || isHovered) {
+                        if (m.emissive) {
+                            m.emissive = new THREE.Color(isSelected ? '#22d3ee' : '#ffffff');
+                            m.emissiveIntensity = isSelected ? 0.55 : 0.2;
+                        }
+                    }
+                    return m;
+                });
+
+                child.material = Array.isArray(child.material) ? clonedMaterials : clonedMaterials[0];
+            }
+        });
+
+        // Measure raw GLB size
+        const rawBox = new THREE.Box3().setFromObject(c);
+        const rawSize = rawBox.getSize(new THREE.Vector3());
+
+        if (rawSize.x > 0 && rawSize.y > 0 && rawSize.z > 0) {
+            // Target dimensions: use vision-estimated dims, else fallback per type
+            const fallback = TYPE_DEFAULTS[type] || { w: 1.0, h: 1.0, d: 1.0 };
+            const tW = dimensions?.width  || fallback.w;
+            const tH = dimensions?.height || fallback.h;
+            const tD = dimensions?.depth  || fallback.d;
+
+            // Per-axis scale so the object exactly matches real-world size
+            c.scale.set(
+                tW / rawSize.x,
+                tH / rawSize.y,
+                tD / rawSize.z
+            );
+
+            // Re-seat on floor (y=0)
+            const scaledBox = new THREE.Box3().setFromObject(c);
+            c.position.y = -scaledBox.min.y;
+        }
+
+        return c;
+    }, [scene, type, dimensions, isHovered, isSelected]);
+
+    return (
+        <group position={[position.x || 0, 0, position.z || 0]} rotation={[0, rotation, 0]}>
+            <primitive object={cloned} />
+            {(isHovered || isSelected) && (
+                <pointLight position={[0, 1.0, 0]} intensity={isSelected ? 3 : 1.5} color={isSelected ? '#22d3ee' : '#ffffff'} distance={3} />
+            )}
+        </group>
+    );
+}
+
+/**
+ * Fallback box furniture for types without a .glb model.
+ * Uses per-axis dimensions from vision AI or type defaults.
+ */
+function BoxFurniture({ type = 'desk', color = '#8B4513', position, dimensions, isHovered, isSelected, rotation = 0 }) {
+    const fallback = TYPE_DEFAULTS[type] || { w: 1.0, h: 1.0, d: 1.0 };
+    const w = dimensions?.width  || fallback.w;
+    const h = dimensions?.height || fallback.h;
+    const d = dimensions?.depth  || fallback.d;
+    const yOff = h / 2;
+    const emissiveColor = isSelected ? '#22d3ee' : (isHovered ? '#ffffff' : color);
+
+    return (
+        <group position={[position.x || 0, 0, position.z || 0]} rotation={[0, rotation, 0]}>
+            <mesh position={[0, yOff, 0]}>
+                <boxGeometry args={[w, h, d]} />
+                <meshStandardMaterial
+                    color={color}
+                    emissive={emissiveColor}
+                    emissiveIntensity={isHovered || isSelected ? 0.5 : 0.06}
+                    roughness={0.7}
+                />
+            </mesh>
+            {(isHovered || isSelected) && (
+                <pointLight position={[0, yOff + 0.5, 0]} intensity={3} color={isSelected ? '#22d3ee' : '#ffffff'} distance={3} />
+            )}
+        </group>
+    );
+}
+
+// We no longer need GLB_MAP since we dynamically load whatever the backend matched.
+
+// Reference bounding boxes per type (w, h, d) in metres — used when vision dims are missing
+const TYPE_DEFAULTS = {
+    bed:       { w: 2.0,  h: 0.55, d: 2.0  },
+    desk:      { w: 1.2,  h: 0.75, d: 0.6  },
+    chair:     { w: 0.6,  h: 0.9,  d: 0.6  },
+    bookshelf: { w: 1.2,  h: 1.8,  d: 0.4  },
+    lamp:      { w: 0.3,  h: 1.5,  d: 0.3  },
+    plant:     { w: 0.5,  h: 0.8,  d: 0.5  },
+};
+
+// DynamicRoom: all colors driven by aesthetics from the vision AI.
+function DynamicRoom({ concepts = [], roomDimensions, hoveredConceptId, selectedForSwapId }) {
+    const roomW  = roomDimensions?.width  || 5;
+    const roomD  = roomDimensions?.depth  || 5;
+    const roomH  = roomDimensions?.height || 2.5;
+    const halfW  = roomW / 2;
+    const halfD  = roomD / 2;
+    const maxHalf = Math.max(halfW, halfD);
+
+    // Extract aesthetics — these come from vision AI via dynamic_config.aesthetics
+    const a = roomDimensions?.aesthetics || {};
+    const wallColor     = a.wall_color     || '#d9cbb8';
+    const floorColor    = a.floor_color    || '#7a4f28';
+    const floorMat      = a.floor_material || 'wood';
+    const ceilingColor  = a.ceiling_color  || '#f2ede4';
+    const lightMood     = a.ambient_light  || 'warm';
+
+    // Fog/background: use a darkened version of the wall color so the room
+    // feels immersive and the background never clashes with the walls.
+    const fogColor = React.useMemo(() => {
+        try {
+            return '#' + new THREE.Color(wallColor).multiplyScalar(0.25).getHexString();
+        } catch { return '#111111'; }
+    }, [wallColor]);
+
+    // Ambient light colors based on mood — for dark/neon rooms use the wall
+    // color itself as the light tint so LEDs actually illuminate the surfaces.
+    const lightColors = {
+        warm:    { ambient: '#fff5e6', ceiling: '#fffde8', fill: '#c8dfff' },
+        cool:    { ambient: '#e6f0ff', ceiling: '#e8f4ff', fill: '#ffd8c8' },
+        neutral: { ambient: '#f5f5f5', ceiling: '#ffffff', fill: '#d0d0ff' },
+        // Dark rooms (e.g. LED/neon bedrooms): use wall color as the light source
+        dark:    { ambient: wallColor,  ceiling: wallColor,  fill: wallColor  },
+    };
+    const lc = lightColors[lightMood] || lightColors.warm;
+
+    // For dark/neon rooms boost ambient so the wall color actually shows up
+    const ambientIntensity = lightMood === 'dark' ? 0.9 : 0.65;
+    const ceilingLightIntensity = lightMood === 'dark' ? 3.0 : 4.0;
+
+    // Physics walls
+    usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0] }));
+    usePlane(() => ({ rotation: [Math.PI / 2, 0, 0],  position: [0, roomH, 0] }));
+    usePlane(() => ({ rotation: [0, 0, 0],             position: [0, 0, -halfD] }));
+    usePlane(() => ({ rotation: [0, Math.PI, 0],       position: [0, 0, halfD] }));
+    usePlane(() => ({ rotation: [0, Math.PI / 2, 0],   position: [-halfW, 0, 0] }));
+    usePlane(() => ({ rotation: [0, -Math.PI / 2, 0],  position: [halfW, 0, 0] }));
+
+    return (
+        <>
+            <color attach="background" args={[fogColor]} />
+            <fog attach="fog" args={[fogColor, maxHalf * 2, maxHalf * 6]} />
+
+            {/* ── LIGHTING ── */}
+            <ambientLight intensity={ambientIntensity} color={lc.ambient} />
+            <pointLight position={[0, roomH - 0.15, 0]} intensity={ceilingLightIntensity} color={lc.ceiling} distance={maxHalf * 3} />
+            <directionalLight position={[halfW * 0.5, roomH, -halfD * 0.5]} intensity={lightMood === 'dark' ? 0.4 : 1.2} color={lc.ceiling} castShadow />
+            <pointLight position={[halfW - 0.5, roomH * 0.6, halfD - 0.5]}  intensity={0.5} color={lc.fill}    distance={maxHalf * 2} />
+
+            {/* ── FLOOR ── */}
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+                <planeGeometry args={[roomW, roomD]} />
+                <meshStandardMaterial
+                    color={floorColor}
+                    roughness={floorMat === 'carpet' ? 1.0 : floorMat === 'tile' ? 0.3 : 0.82}
+                    metalness={floorMat === 'tile' ? 0.15 : 0.01}
+                />
+            </mesh>
+
+            {/* Floor detail lines — wood planks or tile grid */}
+            {floorMat === 'wood' && Array.from(
+                { length: Math.floor(roomD / 1.2) },
+                (_, i) => (i - Math.floor(roomD / 2.4)) * 1.2
+            ).map((z, i) => (
+                <mesh key={`pk-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, z]}>
+                    <planeGeometry args={[roomW, 0.012]} />
+                    <meshStandardMaterial color={new THREE.Color(floorColor).multiplyScalar(0.75)} roughness={1} />
+                </mesh>
+            ))}
+
+            {floorMat === 'tile' && [
+                ...Array.from({ length: Math.floor(roomD / 0.6) }, (_, i) => (i - Math.floor(roomD / 1.2)) * 0.6).map((z, i) => (
+                    <mesh key={`tg-z-${i}`} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, z]}>
+                        <planeGeometry args={[roomW, 0.008]} />
+                        <meshStandardMaterial color={new THREE.Color(floorColor).multiplyScalar(0.8)} />
+                    </mesh>
+                )),
+                ...Array.from({ length: Math.floor(roomW / 0.6) }, (_, i) => (i - Math.floor(roomW / 1.2)) * 0.6).map((x, i) => (
+                    <mesh key={`tg-x-${i}`} rotation={[-Math.PI / 2, Math.PI / 2, 0]} position={[x, 0.005, 0]}>
+                        <planeGeometry args={[roomD, 0.008]} />
+                        <meshStandardMaterial color={new THREE.Color(floorColor).multiplyScalar(0.8)} />
+                    </mesh>
+                ))
+            ]}
+
+            {/* ── CEILING ── */}
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, roomH, 0]}>
+                <planeGeometry args={[roomW, roomD]} />
+                <meshStandardMaterial
+                    color={ceilingColor}
+                    emissive={lightMood === 'dark' ? wallColor : '#000000'}
+                    emissiveIntensity={lightMood === 'dark' ? 0.4 : 0}
+                    roughness={1}
+                />
+            </mesh>
+            {/* Ceiling pendant */}
+            <mesh position={[0, roomH - 0.05, 0]}>
+                <cylinderGeometry args={[0.18, 0.12, 0.1, 16]} />
+                <meshStandardMaterial color={ceilingColor} emissive={lc.ceiling} emissiveIntensity={1.5} />
+            </mesh>
+            <mesh position={[0, roomH - 0.25, 0]}>
+                <cylinderGeometry args={[0.01, 0.01, 0.3, 6]} />
+                <meshStandardMaterial color="#444" roughness={1} />
+            </mesh>
+
+            {/* ── WALLS — all 4 in wall_color ── */}
+            {[
+                { pos: [0, roomH / 2, -halfD],  rot: [0, 0, 0],           w: roomW, h: roomH },
+                { pos: [0, roomH / 2,  halfD],  rot: [0, Math.PI, 0],     w: roomW, h: roomH },
+                { pos: [-halfW, roomH / 2, 0],  rot: [0,  Math.PI / 2, 0], w: roomD, h: roomH },
+                { pos: [ halfW, roomH / 2, 0],  rot: [0, -Math.PI / 2, 0], w: roomD, h: roomH },
+            ].map((wall, i) => (
+                <mesh key={`wall-${i}`} position={wall.pos} rotation={wall.rot} receiveShadow>
+                    <planeGeometry args={[wall.w, wall.h]} />
+                    <meshStandardMaterial
+                        color={wallColor}
+                        emissive={lightMood === 'dark' ? wallColor : '#000000'}
+                        emissiveIntensity={lightMood === 'dark' ? 0.25 : 0}
+                        roughness={0.95}
+                    />
+                </mesh>
+            ))}
+
+            {/* A simple door on the front wall so the user knows it's a room and not a purple screen */}
+            <mesh position={[0, 1.0, halfD - 0.01]} rotation={[0, Math.PI, 0]}>
+                <planeGeometry args={[0.9, 2.0]} />
+                <meshStandardMaterial color="#333333" roughness={0.8} />
+            </mesh>
+
+            {/* Baseboard strips in a slightly darker wall tone */}
+            {[
+                { pos: [0, 0.06, -halfD + 0.01], rot: [0, 0, 0],             w: roomW },
+                { pos: [0, 0.06,  halfD - 0.01], rot: [0, Math.PI, 0],       w: roomW },
+                { pos: [-halfW + 0.01, 0.06, 0], rot: [0,  Math.PI / 2, 0],  w: roomD },
+                { pos: [ halfW - 0.01, 0.06, 0], rot: [0, -Math.PI / 2, 0],  w: roomD },
+            ].map((b, i) => (
+                <mesh key={`bb-${i}`} position={b.pos} rotation={b.rot}>
+                    <planeGeometry args={[b.w, 0.12]} />
+                    <meshStandardMaterial color={new THREE.Color(wallColor).multiplyScalar(0.7)} roughness={0.95} />
+                </mesh>
+            ))}
+
+            {/* ── FURNITURE ── */}
+            {concepts.map((concept, i) => {
+                const type = concept.material_props?.glb_type
+                    || concept.anchor_id?.split('_')?.[1]
+                    || 'desk';
+                const color      = concept.hex_color || '#c8b89a';
+                const pos        = { x: concept.position_x || 0, z: concept.position_z || 0 };
+                const dimensions = concept.material_props?.dimensions;
+                const rotY       = (concept.material_props?.rotation_y || 0) * (Math.PI / 180);
+                
+                // Dynamically point to the model chosen by the LLM
+                const glbPath    = `/models/${type}.glb`;
+                
+                const isHovered  = hoveredConceptId === concept.id;
+                const isSelected = selectedForSwapId === concept.id;
+
+                return (
+                    <Suspense key={concept.id || i} fallback={
+                        <BoxFurniture type={type} color={color} position={pos} dimensions={dimensions} isHovered={isHovered} isSelected={isSelected} rotation={rotY} />
+                    }>
+                        <GLBFurniture glbPath={glbPath} color={color} position={pos} type={type} dimensions={dimensions} isHovered={isHovered} isSelected={isSelected} rotation={rotY} />
+                    </Suspense>
+                );
+            })}
+        </>
+    );
+}
+
+// ─────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────
-export function RoomEnvironment({ theme = 'neon_dev' }) {
+export function RoomEnvironment({ theme = 'neon_dev', concepts = [], roomDimensions, hoveredConceptId, selectedForSwapId }) {
+    // Default dimensions — a normal bedroom
+    const defaultDims = { width: 5, height: 2.5, depth: 5 };
+    const dims = roomDimensions || defaultDims;
+    if (theme === 'dynamic') return <DynamicRoom concepts={concepts} roomDimensions={dims} hoveredConceptId={hoveredConceptId} selectedForSwapId={selectedForSwapId} />;
     if (theme === 'silicon_valley') return <SiliconValleyRoom />;
     return <NeonDevRoom />;
 }

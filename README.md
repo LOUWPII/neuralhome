@@ -1,185 +1,584 @@
 # neuralhome
-NeuralHome no es una aplicación de estudio tradicional; es una Interfaz de Navegación del Conocimiento. Nuestra tesis es que el cerebro humano no evolucionó para leer listas de texto plano, sino para navegar espacios físicos. Estamos construyendo una plataforma que usa IA para transformar documentos pasivos PDFs en Palacios Mentales 3D dinámicos
 
-<div align="center">
-<img src="https://img.shields.io/badge/Status-Alpha-orange" alt="Status Badge"/>
-<img src="https://img.shields.io/badge/Made%20with-React-61DAFB?logo=react&logoColor=black" alt="React Badge"/>
-<img src="https://img.shields.io/badge/Powered%20by-FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI Badge"/>
-<img src="https://img.shields.io/badge/Renderer-Three.js-black?logo=three.js&logoColor=white" alt="ThreeJs Badge"/>
+Transform PDF study materials into interactive 3D memory palaces. Users upload documents, the system extracts concepts via a RAG pipeline (chunking + embeddings + LLM), maps them to physical anchor objects in a themed 3D room, and provides a full study toolkit (Socratic tutor, flashcards, quizzes, Feynman voice mentor, infographics). Built as a single-page React application with a FastAPI backend and Supabase for persistence and auth. Full bilingual support (English/Spanish) throughout the UI, LLM interactions, and voice synthesis.
 
-<h1 align="center">NeuralHome 🧠🏰</h1>
-<p align="center">
-<strong>Transforma documentos aburridos en Palacios Mentales 3D inmersivos.</strong>
-</p>
-</div>
+## Architecture
 
-## 📌 Project Name and Description
-
-**NeuralHome** es una aplicación innovadora de _Espacio Mental 3D_ (Mind Palace) que mejora drásticamente la retención de la memoria convirtiendo el material de estudio en entornos espaciales estructurados.
-
-La aplicación utiliza un pipeline **RAG (Retrieval-Augmented Generation)** impulsado por Inteligencia Artificial para extraer los conceptos clave de un documento PDF. Luego, mapea lógicamente estos conceptos hacia "Anclas" físicas dentro de un motor espacial 3D en el navegador interactuable. Ya basta de leer muros de texto: ahora podrás "caminar" por tu propio conocimiento.
-
----
-
-## 💻 Technology Stack
-
-NeuralHome utiliza una arquitectura moderna orientada al rendimiento gráfico y procesamiento de IA nativo:
-
-### Frontend
-- **React 18** (vía Vite) - Framework UI.
-- **Three.js** (`@react-three/fiber`, `@react-three/drei`) - Motor WebGL para renderizado 3D.
-- **Vanilla CSS** con variables - Diseño responsivo con foco en estéticas Glassmorphism / Cyberpunk.
-- **Supabase JS Client** - Para autenticación nativa y consultas rápidas RPC.
-- **Zustand / Context API** - Manejo de estados inmersivos.
-
-### Backend (Inteligencia & Procesamiento)
-- **FastAPI (Python 3.10+)** - Framework robusto y asíncrono para el manejo de APIs.
-- **PyMuPDF (`fitz`)** - Lector de streams PDF hiperrápido de bajo peso en memoria.
-- **SentenceTransformers** (`BAAI/bge-small-en-v1.5` en HF) - Generación de vector embeddings hugging face para RAG.
-- **Groq API** - Host de los modelos LLM súper rápidos:
-- `Llama-3.1-8b-instant`: Para el **Neural Architect** Socrático.
-- `Llama-3.3-70b-versatile`: Para el Mapeo Lógico 1-a-1 de *Spatial Anchoring*.
-
-### Database & Auth
-- **Supabase (PostgreSQL)** - Base de datos principal.
-- **PostGIS / pgvector** - Para el almacenamiento semántico indexado.
-- **Row Level Security (RLS)** - Seguridad controlada nativamente en la infraestructura.
-
----
-
-## 🏗 Project Architecture
-
-La arquitectura RAG de NeuralHome y WebGL obedece un modelo de Separación Fuerte bajo eventos síncronos:
-
-```mermaid
-graph TD
-   A[Frontend UI React] -->|PDF / File Upload| B(FastAPI Endpoint)
-   B --> C[Cortar PDF & Chunking]
-   C --> D[Embedding Model]
-   C --> E[Groq Llama 70B]
-   D --> F[(Supabase pgvector)]
-   E -->|1-to-1 Mapping JSON| F
-   F -->|Return Palace ID| A
-   A -->|R3F Render| G[3D Room Environment]
-   G -->|Hover / Click Hitbox| H{RAG Socratic Chat}
+```
+Frontend (React 19 + Vite 7)          Backend (FastAPI Python)
+┌─────────────────────────────┐       ┌──────────────────────────────┐
+│  LandingPage                │       │  POST /api/ingest/pdf        │
+│  Dashboard (CRUD palaces)   │◄─────►│  POST /api/ingest/photo-pdf  │
+│  PalaceView (3D room)       │  HTTP │  POST /api/chat/socratic     │
+│  StudyToolkitView           │       │  POST /api/chat/feynman-voice│
+│    ├ SocraticChatOverlay    │       │  POST /api/quiz/generate     │
+│    ├ FlashCardsDeck         │       │  POST /api/flashcards/generate│
+│    ├ FeynmanVoiceMentor     │       │  POST /api/infographic/generate│
+│    ├ Quiz UI                │       │                              │
+│    └ InfographicView        │       │  Services:                   │
+│  AuthForms (i18n en/es)     │       │    llm_service.py            │
+│                              │       │    embedding_service.py      │
+│  3D Layer (Three.js/R3F):   │       │    rag_pipeline.py           │
+│    RoomEnvironment          │       │    vision_service.py         │
+│    KnowledgeObject          │       │    glb_matcher.py            │
+│    FirstPersonControls      │       │    quiz_service.py           │
+│    ConceptMiniature         │       │    infographic_service.py    │
+│    roomAnchors.js           │       │    flashcards_service.py     │
+└─────────────┬───────────────┘       └──────────────┬───────────────┘
+              │                                     │
+              └──────────┬──────────────────────────┘
+                         │
+              ┌──────────▼──────────┐
+              │  Supabase           │
+              │  ├ PostgreSQL+pgvec │
+              │  ├ Auth (email/pwd) │
+              │  └ RLS              │
+              └─────────────────────┘
 ```
 
-El flujo principal asegura la inmutabilidad de la estructura 3D al forzar vía ingeniería de prompts a la Inteligencia Artificial a no alucinar más conocimiento físico que los espacios (*Anclas*) disponibles hardcodeados en los cuartos.
+**Data flow (ingest):** PDF upload -> PyMuPDF text extraction -> overlapping chunking (~300 tokens each) -> HuggingFace `BAAI/bge-small-en-v1.5` embeddings (384d) -> Groq Llama 3.3 70B extracts concepts with 1-to-1 anchor mapping -> concepts stored in Supabase with embeddings -> frontend renders KnowledgeObjects at anchor positions.
 
----
+**Photo-based flow (optional):** Upload room photo -> Google Gemini (vision) detects furniture layout -> GLB matcher (LLM) maps detected objects to available `.glb` models -> RAG pipeline uses detected objects as dynamic anchors.
 
-## 🚀 Getting Started
+## Stack
 
-Sigue estos pasos para arrancar el ecosistema en desarrollo local.
+**Backend:**
+- Python 3.10+ with FastAPI 0.111+ and Uvicorn 0.30+
+- PyMuPDF (fitz) 1.24+ for PDF parsing
+- OpenAI Python client 1.30+ (used as Groq-compatible wrapper)
+- google-genai 0.8+ (Gemini vision API)
+- HuggingFace Inference API (BAAI/bge-small-en-v1.5, 384-dim embeddings)
+- supabase-py 2.5+
+- Pillow 10.3+
+- Pydantic 2.7+ / pydantic-settings 2.3+
 
-### Prerequisitos
-- Node.js LTS (v18+)
+**Frontend:**
+- React 19 + Vite 7
+- Three.js 0.183 + @react-three/fiber 9.5 + @react-three/drei 10.7
+- @react-three/cannon 6.6 (physics)
+- react-router-dom 7.13
+- @supabase/supabase-js 2.98
+- zustand 5.0
+- lucide-react 0.577
+- react-pdf 10.4
+
+**Database:**
+- Supabase (PostgreSQL 15+)
+- pgvector extension (384-dim HNSW index, cosine similarity)
+- Row-Level Security (RLS) on palaces and concepts tables
+
+**AI Providers:**
+- Groq API: Llama 3.3 70B (concept mapping, quiz/flashcard/infographic generation) and Llama 3.1 8B (Socratic chat, Feynman voice, Neural Architect)
+- Google Gemini: gemini-2.5-flash / pro (vision analysis of room photos)
+- HuggingFace Inference API: BAAI/bge-small-en-v1.5 (embeddings)
+- OpenAI DALL-E 3 (infographic background images)
+
+## Features
+
+- **PDF ingest and RAG pipeline** (`backend/app/services/rag_pipeline.py:91-146`): extracts text via PyMuPDF, creates overlapping chunks, generates embeddings, calls LLM for concept extraction and 1-to-1 anchor mapping
+- **Socratic tutor** (`backend/app/services/llm_service.py:281-325`): 3-phase Socratic method (open questions -> hints -> explanations), grounded in RAG chunks, spatial memory anchoring to 3D objects, bilingual
+- **Feynman voice mentor** (`backend/app/services/llm_service.py:331-417`): streaming SSE endpoint, Web Speech API STT/TTS, 3-second silence buffer, Spanish-optimized
+- **Quiz generation and evaluation** (`backend/app/services/quiz_service.py`): 7-question mixed-type quizzes (multiple choice, open, true/false) with LLM-based evaluation
+- **Flashcard generation** (`backend/app/services/flashcards_service.py`): 10 cards per generation, question + cloze types
+- **Hybrid infographic pipeline** (`backend/app/services/infographic_service.py`): LLM extracts semantic structure -> DALL-E 3 generates visual background -> frontend renders text as HTML overlay
+- **3D spatial memory palace** (`frontend/src/3d/RoomEnvironment.jsx`): themed rooms (neon_dev cyberpunk, silicon_valley modern), Rapier physics, fixed anchor positions per theme (`frontend/src/3d/roomAnchors.js`), KnowledgeObjects with floating orbs
+- **First-person exploration** (`frontend/src/3d/FirstPersonControls.jsx`): PointerLock, WASD + arrow keys, sprint, hover glow on objects
+- **Photo-based room generation** (`backend/app/services/vision_service.py`): Gemini vision analyzes uploaded room photo, extracts furniture layout, GLB matcher (`backend/app/services/glb_matcher.py`) maps to available 3D models
+- **Internationalization** (`frontend/src/lib/translations.js`): full English/Spanish dictionary covering all UI text, auth forms, study tools
+
+## How to run
+
+### Prerequisites
+- Node.js 18+
 - Python 3.10+
-- Proyecto activo en Supabase
-- API Key de Groq y Hugging Face.
+- Supabase project (URL + anon key)
+- Groq API key
+- HuggingFace API key (for embeddings)
+- Google Gemini API key (optional, for photo-based rooms)
+- OpenAI API key (optional, for infographic images)
 
-### Instalación del Backend (Terminal 1)
+### Backend
 ```bash
 cd backend
 python -m venv venv
-# Activar entorno (Windows: venv\Scripts\activate | Mac/Linux: source venv/bin/activate)
+# Windows: venv\Scripts\activate | Unix: source venv/bin/activate
 pip install -r requirements.txt
 ```
-> Configura tu `.env` dentro de `backend/` con las variables `SUPABASE_URL`, `SUPABASE_KEY` (Anon), `GROQ_API_KEY`, `HUGGINGFACE_API_KEY`.
+
+Create `backend/.env`:
+```
+SUPABASE_URL=<your-supabase-url>
+SUPABASE_KEY=<your-supabase-anon-key>
+GROQ_API_KEY=<your-groq-key>
+GEMINI_API_KEY=<your-gemini-key>
+HUGGINGFACE_API_KEY=<your-hf-key>
+OPENAI_API_KEY=<your-openai-key>
+```
+
 ```bash
 uvicorn app.main:app --reload --port 8001
 ```
 
-### Instalación del Frontend (Terminal 2)
+### Frontend
 ```bash
 cd frontend
 npm install
 ```
-> Configura tu `.env` dentro de `frontend/` agregando `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`.
+
+Create `frontend/.env`:
+```
+VITE_SUPABASE_URL=<your-supabase-url>
+VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+```
+
 ```bash
 npm run dev
 ```
 
----
+### Database setup
+Run the SQL files in `scripts/` against your Supabase project:
+1. `supabase_schema.sql` — tables + RLS policies
+2. `pgvector_migration.sql` — pgvector extension, embedding column, HNSW index, `match_concepts()` function
+3. `add_room_metadata.sql` — additional room metadata columns
+4. `quizzes_migration.sql` — quiz results table
 
-## 📁 Project Structure
-
-La organización general se distribuye entre Cliente y Servicio:
+## File structure
 
 ```
 neuralhome/
 ├── backend/
 │   ├── app/
-│   │   ├── api/          # Endpoints FastAPI (ingest, chat, etc)
-│   │   ├── core/         # Configuración y settings pydantic
-│   │   ├── services/     # Lógica central: LLM, RAG Pipeline, Embeddings
+│   │   ├── main.py                        # FastAPI app, CORS, router mounting
+│   │   ├── api/
+│   │   │   ├── deps.py                    # Supabase dependency injection
+│   │   │   └── endpoints/
+│   │   │       ├── ingest.py              # PDF upload, photo+PDF, palace deletion
+│   │   │       ├── chat.py                # Socratic chat, Feynman voice SSE, summary
+│   │   │       ├── quiz.py                # Quiz generation, evaluation, retrieval
+│   │   │       ├── flashcards.py          # Flashcard generation
+│   │   │       └── infographic.py         # Infographic generation
+│   │   ├── core/
+│   │   │   ├── config.py                 # Pydantic settings (env vars)
+│   │   │   └── assets.py                 # GLB synonym mapping
+│   │   └── services/
+│   │       ├── llm_service.py            # Groq client, prompts, architect/chat/feynman
+│   │       ├── rag_pipeline.py           # PDF extract -> chunk -> embed -> LLM
+│   │       ├── embedding_service.py      # HuggingFace Inference API
+│   │       ├── vision_service.py         # Gemini photo analysis
+│   │       ├── glb_matcher.py            # LLM-based object-to-GLB mapping
+│   │       ├── quiz_service.py           # Quiz gen + evaluation
+│   │       ├── flashcards_service.py     # Flashcard generation
+│   │       ├── infographic_service.py    # Hybrid infographic pipeline
+│   │       ├── image_service.py          # DALL-E image generation
+│   │       └── gemini_service.py         # Legacy Groq concept extraction
 │   ├── tests/
+│   │   └── test_ingest.py                # Health check pytest
+│   ├── test_hf.py                        # HuggingFace connectivity test
+│   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── 3d/           # Componentes R3F (RoomEnvironment, KnowledgeObject)
-│   │   ├── components/   # UI Reusable (Navbar, Modals)
-│   │   ├── contexts/     # AuthProvider, SocraticState
-│   │   ├── lib/          # Clientes como supabase.js
-│   │   ├── pages/        # Vistas principales (Landing, Dashboard, PalaceView)
-│   ├── public/models/    # Assets 3D GLTF (.glb)
-├── scripts/              # Utilidades SQL (Esquemas Supabase, Patch RLS)
-├── TECHNICAL_DOC.md      # Diseño algorítmico profundo del proyecto
+│   │   ├── App.jsx                       # Router (/, /dashboard, /palace/:id, /study/:p/:c)
+│   │   ├── main.jsx
+│   │   ├── index.css
+│   │   ├── lib/
+│   │   │   ├── supabase.js               # Supabase client
+│   │   │   └── translations.js           # Full i18n dictionary (en/es)
+│   │   ├── contexts/
+│   │   │   ├── AuthContext.jsx            # Auth state, CRUD, language preference
+│   │   │   └── useTranslation.js         # Translation hook
+│   │   ├── pages/
+│   │   │   ├── LandingPage.jsx           # Hero + particle canvas + auth modal
+│   │   │   ├── Dashboard.jsx             # Palace grid, create/delete modals
+│   │   │   ├── PalaceView.jsx            # 3D first-person room exploration
+│   │   │   └── StudyToolkitView.jsx      # Split-screen study tools
+│   │   ├── components/
+│   │   │   ├── ui/AuthForms.jsx          # Sign-in/sign-up with i18n, validation
+│   │   │   ├── HeroParticleCanvas.jsx    # Three.js particle animation
+│   │   │   ├── IngestModal.jsx           # PDF upload modal
+│   │   │   ├── RoomCreationModal.jsx     # Room blueprint + architect chat
+│   │   │   ├── SocraticChatOverlay.jsx   # Q&A chat overlay
+│   │   │   ├── FlashCardsDeck.jsx        # Flip-card review
+│   │   │   ├── FeynmanVoiceMentor.jsx    # STT/TTS voice interface
+│   │   │   ├── InfographicView.jsx       # Image + HTML overlay
+│   │   │   ├── StudyToolCard.jsx         # Tab navigation
+│   │   │   └── ProtectedRoute.jsx        # Auth guard
+│   │   └── 3d/
+│   │       ├── RoomEnvironment.jsx       # Physics room, anchors, GLB models
+│   │       ├── roomAnchors.js            # Fixed anchor positions for themes
+│   │       ├── FirstPersonControls.jsx   # PointerLock + WASD controls
+│   │       ├── KnowledgeObject.jsx       # Data orb with orbiting text
+│   │       ├── ConceptMiniature.jsx      # Miniature concept viewer
+│   │       └── Environment.jsx           # Ambient lighting/sky
+│   ├── public/models/                    # GLB assets
+│   │   ├── bed.glb, chair.glb, desk.glb, bookshelf.glb
+│   │   ├── lamp.glb, plant.glb, sofa.glb, window.glb
+│   │   └── (additional: bed_linen.glb, led_tv.glb, nightstand.glb, etc.)
+│   ├── test.cjs                          # Puppeteer E2E test
+│   ├── package.json
+│   └── vite.config.js
+├── scripts/
+│   ├── supabase_schema.sql               # Tables + RLS
+│   ├── pgvector_migration.sql            # Embedding column + HNSW index + match fn
+│   ├── add_room_metadata.sql             # Additional columns
+│   ├── fix_rls_policies.sql              # RLS fixes
+│   └── fix_delete_policy.sql             # Deletion policy fix
+├── kickstart/
+│   └── documento_requerimientos.md       # Strategic requirements doc
+├── rules/
+│   └── buenas-practicas.md              # Coding conventions (Spanish)
+├── skills/                               # AI-assisted development skill definitions
+│   ├── n-core/ (spatial-logic, socratic-tutor, entropy)
+│   └── vendor/ (FastAPI, RAG, Supabase knowledge bases)
+├── TECHNICAL_DOC.md                     # Deep architecture documentation
 └── README.md
 ```
 
----
+## Testing
 
-## ✨ Key Features
-
-- **Ingesta Híbrida Inteligente**: Lee documentos pesados en milisegundos gracias a su chunking inteligente traslapado.
-- **Alojamiento Espacial 1:1**: Traduce texto aburrido en objetos fotorrealistas clickeables (monitores neón, pizarrones, servidores de datos), eliminando el cruce visual.
-- **Neural Architect**: Conversa naturalmente con el modelo antes de generar la habitación para afinar tus "objetivos de aprendizaje".
-- **Limpieza Fuerte (CASCADE)**: Destrucción de cuartos sin datos huérfanos esquivando fallos RLS silenciosos.
-- **Gamificación Socrática (En camino)**: Transición directa a un dashboard inmersivo 60/40 para aplicar metodologías Feynman a tus conceptos 3D.
-
----
-
-## 🔄 Development Workflow
-
-Trabajamos utilizando Sprints interactivos bajo un formato **Agile** modificado.
-1. **Petición**: El archivo de requisitos dicta qué Cuasi-Feature implementar.
-2. **Arquitectura Rápida**: Documentación local rápida antes de escribir código.
-3. **Draft Visual**: En Frontend, creamos primero iteraciones UI Vanilla CSS (prioridad *Look Premium* e inmersión).
-4. **Acople de Datos**: Integración con PostgreSQL -> FastAPI -> Cliente.
-
----
-
-## 📏 Coding Standards
-
-Para mantener el código legible y limpio:
-- **Python**: Variables tipadas con `Typing`. Comentarios estilo Google Docstrings para funciones core del pipeline RAG.
-- **Frontend**: Componentes Funcionales. Nada de frameworks css utilitarios como Tailwind por defecto a menos que se exija explícitamente; todo se maneja mediante Vanilla CSS para lograr control atómico absoluto en las animaciones *Cyberpunk/Glassmorphism*.
-- **Gestión de Prompts**: Todos los Prompts de LLM se centralizan y escapan (ej. `{{ JSON }}`) en `/services/llm_service.py` para evitar roturas de pipeline.
-
----
-
-## 🧪 Testing
-
-En la actualidad las pruebas son interactivas mediante servidores cruzados. Sin embargo, para testar el Backend (Pipeline RAG):
+`backend/tests/test_ingest.py` contains a single pytest test that checks the `/health` endpoint returns 200. Run with:
 ```bash
 cd backend
 pytest tests/
 ```
-Las validaciones de *Lints* (Pyre2) se priorizan con tolerancia 0 a dependencias inexistentes, garantizando que el compilador no truene en runtime.
 
----
+`frontend/test.cjs` is a Puppeteer E2E script that navigates to `/dashboard`, clicks the first palace link, and moves the mouse. It requires the dev server running on `localhost:5173`. Run with:
+```bash
+cd frontend
+node test.cjs
+```
 
-## 🤝 Contributing
+`backend/test_hf.py` is a standalone script that tests HuggingFace Inference API connectivity (not part of test suite).
 
-Las contribuciones siguen nuestro `rules/buenas-practicas.md` original:
-- Evita el *"Boilerplate code"* excesivo.
-- Tus PRs deben priorizar **la Estética Premium** si tocas el frontend. Diseños aburridos serán rechazados de plano.
-- Nunca alucines comandos destructivos locales, usa el entorno virtual para pruebas de librerías.
-- Si alteras el Mapeo de Anclas (Acuñado en `roomAnchors.js`), asegúrate de replicar la lista de forma sincrónica en `ROOM_ANCHORS` de Python en el Backend.
+**Current state:** minimal test coverage. No unit tests for services, no integration tests for API endpoints. No CI/CD pipeline configured.
 
----
+## Known issues and technical debt
 
+1. **Embedding service falls back silently**: `backend/app/services/embedding_service.py:20-23` returns zero-vector placeholders when `HUGGINGFACE_API_KEY` is missing, masking configuration errors rather than failing explicitly.
 
-<div align="center">
-<sub>Construido para el Futuro del Aprendizaje Humano. 🏔️</sub>
-</div>
+2. **Duplicate LLM extraction logic**: `backend/app/services/gemini_service.py` contains an older version of concept extraction (with free-form `model_type` + `position` fields) that duplicates the same logic in `llm_service.py:extract_palace_from_chunks` (which uses fixed anchors). Both exist in the codebase; only `llm_service.py` is active via the ingest pipeline.
+
+3. **Feynman voice streams via thread+queue**: `backend/app/api/endpoints/chat.py:269-282` bridges a synchronous generator to an async SSE endpoint using `threading.Thread` + `queue.Queue`. This works but bypasses FastAPI's native async streaming.
+
+4. **Supabase RLS deletion workaround**: `backend/app/api/endpoints/ingest.py:348-359` manually deletes child concepts before the parent palace to work around a Supabase RLS policy issue with `ON DELETE CASCADE`. The accompanying SQL in `scripts/fix_delete_policy.sql` and `scripts/fix_rls_policies.sql` documents multiple attempts to fix this at the DB level.
+
+5. **Theme stored in `description` field**: `backend/app/api/endpoints/chat.py:119` uses the `description` column of the `palaces` table to store the room theme string. This overloads a semantically different field.
+
+6. **LLM retry with loop-detection bypass**: `backend/app/services/llm_service.py:234-258` injects `"[ignoring loop detection]"` into prompts when Groq's content safety loop detection triggers. This is an undocumented workaround for the hosted API.
+
+7. **No type checking**: No mypy or pyright configuration. Backend uses `print()` for logging instead of a structured logger.
+
+8. **Dependency versions unpinned**: `backend/requirements.txt` uses `>=` version specifiers. `frontend/package.json` versions are specific.
+
+## Contributors
+
+Atribución de los 6 servicios backend (`backend/app/services/`) verificada mediante `git blame` línea por línea. El análisis distingue autoría real (quién escribió cada línea) de autoría de commit.
+
+- **David Beltran (David Beltrán / David Beltran Gomez)** `estedavid0104@gmail.com`
+  - Diseño e implementación completa de `quiz_service.py` (182 líneas, 100%) — generación de cuestionarios de 7 preguntas con 3 tipos (opción múltiple, abierta, verdadero/falso), evaluación de respuestas abiertas vía LLM y evaluación determinista de respuestas cerradas.
+  - Diseño e implementación completa de `flashcards_service.py` (69 líneas, 100%) — generación de 10 flashcards por tanda, tipos pregunta y completar, con respuesta estructurada en JSON.
+  - Diseño e implementación completa de `infographic_service.py` (258 líneas, 100%) — pipeline híbrido de 3 etapas: extracción semántica por LLM → generación de imagen de fondo (DALL-E 3) → metadatos de layout y paleta para overlay HTML en frontend.
+  - Rediseño completo del prompting Socrático en `llm_service.py` (~6% del archivo): metodología de 3 fases (escalado por fallos), anclaje espacial a objetos 3D, detección de fatiga, directiva de idioma (`language: "es" / "en"`). Conversión de llamadas LLM síncronas a `asyncio.to_thread()` para no bloquear el event loop de FastAPI.
+  - NO reclamar contribución sustancial en `rag_pipeline.py` (1 línea) ni `embedding_service.py` (0 líneas).
+  - Frontend: landing page, auth forms, i18n, HeroParticleCanvas, KnowledgeObject inicial, API endpoints (chat, quiz, flashcards, infographic), documentación técnica, skill definitions, SQL migrations (quizzes).
+
+- **Felipe Gómez (pipe)** `pipegomezl2006@gmail.com`
+  - Pipeline RAG completo: extracción de texto de PDFs (`rag_pipeline.py`, 145 de 146 líneas), chunking con overlapping, emparejamiento semántico concepto-chunk.
+  - Servicio de embeddings vía Hugging Face Inference API (`embedding_service.py`, 43 líneas, 100%).
+  - Arquitectura base del LLM service: ROOM_ANCHORS, Neural Architect prompt, Feynman Voice Mentor, pipeline de extracción de palacios (`llm_service.py`, ~94% del archivo).
+  - 3D room environment (RoomEnvironment con todos los sub-componentes de anclas), first-person controls, photo-based room generation (vision service, GLB matcher), Feynman voice mentor frontend, GLB 3D models, room anchors, StudyToolCard, ProtectedRoute, frontend config (Vite, ESLint), SQL migrations (RLS fixes, metadata), Puppeteer E2E test.
+
+- **LOUWPII** `148557091+LOUWPII@users.noreply.github.com` — Repository owner. Initial commit, README creation and management, PR merges.
+
+**Nota sobre coautoría en `llm_service.py`:** Las contribuciones de David Beltrán (~6% del archivo) modifican código original de Felipe Gómez. El prompt del tutor Socrático fue un reemplazo completo (metodología de 3 fases, anclaje espacial, detección de fatiga) sobre el prompt simple de Felipe, y los wrappers `asyncio.to_thread()` se añadieron sobre llamadas síncronas escritas por Felipe. Ningún commit incluye el marcador `Co-authored-by`.
+# neuralhome
+
+Transform PDF study materials into interactive 3D memory palaces. Users upload documents, the system extracts concepts via a RAG pipeline (chunking + embeddings + LLM), maps them to physical anchor objects in a themed 3D room, and provides a full study toolkit (Socratic tutor, flashcards, quizzes, Feynman voice mentor, infographics). Built as a single-page React application with a FastAPI backend and Supabase for persistence and auth. Full bilingual support (English/Spanish) throughout the UI, LLM interactions, and voice synthesis.
+
+## Architecture
+
+```
+Frontend (React 19 + Vite 7)          Backend (FastAPI Python)
+┌─────────────────────────────┐       ┌──────────────────────────────┐
+│  LandingPage                │       │  POST /api/ingest/pdf        │
+│  Dashboard (CRUD palaces)   │◄─────►│  POST /api/ingest/photo-pdf  │
+│  PalaceView (3D room)       │  HTTP │  POST /api/chat/socratic     │
+│  StudyToolkitView           │       │  POST /api/chat/feynman-voice│
+│    ├ SocraticChatOverlay    │       │  POST /api/quiz/generate     │
+│    ├ FlashCardsDeck         │       │  POST /api/flashcards/generate│
+│    ├ FeynmanVoiceMentor     │       │  POST /api/infographic/generate│
+│    ├ Quiz UI                │       │                              │
+│    └ InfographicView        │       │  Services:                   │
+│  AuthForms (i18n en/es)     │       │    llm_service.py            │
+│                              │       │    embedding_service.py      │
+│  3D Layer (Three.js/R3F):   │       │    rag_pipeline.py           │
+│    RoomEnvironment          │       │    vision_service.py         │
+│    KnowledgeObject          │       │    glb_matcher.py            │
+│    FirstPersonControls      │       │    quiz_service.py           │
+│    ConceptMiniature         │       │    infographic_service.py    │
+│    roomAnchors.js           │       │    flashcards_service.py     │
+└─────────────┬───────────────┘       └──────────────┬───────────────┘
+              │                                     │
+              └──────────┬──────────────────────────┘
+                         │
+              ┌──────────▼──────────┐
+              │  Supabase           │
+              │  ├ PostgreSQL+pgvec │
+              │  ├ Auth (email/pwd) │
+              │  └ RLS              │
+              └─────────────────────┘
+```
+
+**Data flow (ingest):** PDF upload -> PyMuPDF text extraction -> overlapping chunking (~300 tokens each) -> HuggingFace `BAAI/bge-small-en-v1.5` embeddings (384d) -> Groq Llama 3.3 70B extracts concepts with 1-to-1 anchor mapping -> concepts stored in Supabase with embeddings -> frontend renders KnowledgeObjects at anchor positions.
+
+**Photo-based flow (optional):** Upload room photo -> Google Gemini (vision) detects furniture layout -> GLB matcher (LLM) maps detected objects to available `.glb` models -> RAG pipeline uses detected objects as dynamic anchors.
+
+## Stack
+
+**Backend:**
+- Python 3.10+ with FastAPI 0.111+ and Uvicorn 0.30+
+- PyMuPDF (fitz) 1.24+ for PDF parsing
+- OpenAI Python client 1.30+ (used as Groq-compatible wrapper)
+- google-genai 0.8+ (Gemini vision API)
+- HuggingFace Inference API (BAAI/bge-small-en-v1.5, 384-dim embeddings)
+- supabase-py 2.5+
+- Pillow 10.3+
+- Pydantic 2.7+ / pydantic-settings 2.3+
+
+**Frontend:**
+- React 19 + Vite 7
+- Three.js 0.183 + @react-three/fiber 9.5 + @react-three/drei 10.7
+- @react-three/cannon 6.6 (physics)
+- react-router-dom 7.13
+- @supabase/supabase-js 2.98
+- zustand 5.0
+- lucide-react 0.577
+- react-pdf 10.4
+
+**Database:**
+- Supabase (PostgreSQL 15+)
+- pgvector extension (384-dim HNSW index, cosine similarity)
+- Row-Level Security (RLS) on palaces and concepts tables
+
+**AI Providers:**
+- Groq API: Llama 3.3 70B (concept mapping, quiz/flashcard/infographic generation) and Llama 3.1 8B (Socratic chat, Feynman voice, Neural Architect)
+- Google Gemini: gemini-2.5-flash / pro (vision analysis of room photos)
+- HuggingFace Inference API: BAAI/bge-small-en-v1.5 (embeddings)
+- OpenAI DALL-E 3 (infographic background images)
+
+## Features
+
+- **PDF ingest and RAG pipeline** (`backend/app/services/rag_pipeline.py:91-146`): extracts text via PyMuPDF, creates overlapping chunks, generates embeddings, calls LLM for concept extraction and 1-to-1 anchor mapping
+- **Socratic tutor** (`backend/app/services/llm_service.py:281-325`): 3-phase Socratic method (open questions -> hints -> explanations), grounded in RAG chunks, spatial memory anchoring to 3D objects, bilingual
+- **Feynman voice mentor** (`backend/app/services/llm_service.py:331-417`): streaming SSE endpoint, Web Speech API STT/TTS, 3-second silence buffer, Spanish-optimized
+- **Quiz generation and evaluation** (`backend/app/services/quiz_service.py`): 7-question mixed-type quizzes (multiple choice, open, true/false) with LLM-based evaluation
+- **Flashcard generation** (`backend/app/services/flashcards_service.py`): 10 cards per generation, question + cloze types
+- **Hybrid infographic pipeline** (`backend/app/services/infographic_service.py`): LLM extracts semantic structure -> DALL-E 3 generates visual background -> frontend renders text as HTML overlay
+- **3D spatial memory palace** (`frontend/src/3d/RoomEnvironment.jsx`): themed rooms (neon_dev cyberpunk, silicon_valley modern), Rapier physics, fixed anchor positions per theme (`frontend/src/3d/roomAnchors.js`), KnowledgeObjects with floating orbs
+- **First-person exploration** (`frontend/src/3d/FirstPersonControls.jsx`): PointerLock, WASD + arrow keys, sprint, hover glow on objects
+- **Photo-based room generation** (`backend/app/services/vision_service.py`): Gemini vision analyzes uploaded room photo, extracts furniture layout, GLB matcher (`backend/app/services/glb_matcher.py`) maps to available 3D models
+- **Internationalization** (`frontend/src/lib/translations.js`): full English/Spanish dictionary covering all UI text, auth forms, study tools
+
+## How to run
+
+### Prerequisites
+- Node.js 18+
+- Python 3.10+
+- Supabase project (URL + anon key)
+- Groq API key
+- HuggingFace API key (for embeddings)
+- Google Gemini API key (optional, for photo-based rooms)
+- OpenAI API key (optional, for infographic images)
+
+### Backend
+```bash
+cd backend
+python -m venv venv
+# Windows: venv\Scripts\activate | Unix: source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Create `backend/.env`:
+```
+SUPABASE_URL=<your-supabase-url>
+SUPABASE_KEY=<your-supabase-anon-key>
+GROQ_API_KEY=<your-groq-key>
+GEMINI_API_KEY=<your-gemini-key>
+HUGGINGFACE_API_KEY=<your-hf-key>
+OPENAI_API_KEY=<your-openai-key>
+```
+
+```bash
+uvicorn app.main:app --reload --port 8001
+```
+
+### Frontend
+```bash
+cd frontend
+npm install
+```
+
+Create `frontend/.env`:
+```
+VITE_SUPABASE_URL=<your-supabase-url>
+VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+```
+
+```bash
+npm run dev
+```
+
+### Database setup
+Run the SQL files in `scripts/` against your Supabase project:
+1. `supabase_schema.sql` — tables + RLS policies
+2. `pgvector_migration.sql` — pgvector extension, embedding column, HNSW index, `match_concepts()` function
+3. `add_room_metadata.sql` — additional room metadata columns
+4. `quizzes_migration.sql` — quiz results table
+
+## File structure
+
+```
+neuralhome/
+├── backend/
+│   ├── app/
+│   │   ├── main.py                        # FastAPI app, CORS, router mounting
+│   │   ├── api/
+│   │   │   ├── deps.py                    # Supabase dependency injection
+│   │   │   └── endpoints/
+│   │   │       ├── ingest.py              # PDF upload, photo+PDF, palace deletion
+│   │   │       ├── chat.py                # Socratic chat, Feynman voice SSE, summary
+│   │   │       ├── quiz.py                # Quiz generation, evaluation, retrieval
+│   │   │       ├── flashcards.py          # Flashcard generation
+│   │   │       └── infographic.py         # Infographic generation
+│   │   ├── core/
+│   │   │   ├── config.py                 # Pydantic settings (env vars)
+│   │   │   └── assets.py                 # GLB synonym mapping
+│   │   └── services/
+│   │       ├── llm_service.py            # Groq client, prompts, architect/chat/feynman
+│   │       ├── rag_pipeline.py           # PDF extract -> chunk -> embed -> LLM
+│   │       ├── embedding_service.py      # HuggingFace Inference API
+│   │       ├── vision_service.py         # Gemini photo analysis
+│   │       ├── glb_matcher.py            # LLM-based object-to-GLB mapping
+│   │       ├── quiz_service.py           # Quiz gen + evaluation
+│   │       ├── flashcards_service.py     # Flashcard generation
+│   │       ├── infographic_service.py    # Hybrid infographic pipeline
+│   │       ├── image_service.py          # DALL-E image generation
+│   │       └── gemini_service.py         # Legacy Groq concept extraction
+│   ├── tests/
+│   │   └── test_ingest.py                # Health check pytest
+│   ├── test_hf.py                        # HuggingFace connectivity test
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx                       # Router (/, /dashboard, /palace/:id, /study/:p/:c)
+│   │   ├── main.jsx
+│   │   ├── index.css
+│   │   ├── lib/
+│   │   │   ├── supabase.js               # Supabase client
+│   │   │   └── translations.js           # Full i18n dictionary (en/es)
+│   │   ├── contexts/
+│   │   │   ├── AuthContext.jsx            # Auth state, CRUD, language preference
+│   │   │   └── useTranslation.js         # Translation hook
+│   │   ├── pages/
+│   │   │   ├── LandingPage.jsx           # Hero + particle canvas + auth modal
+│   │   │   ├── Dashboard.jsx             # Palace grid, create/delete modals
+│   │   │   ├── PalaceView.jsx            # 3D first-person room exploration
+│   │   │   └── StudyToolkitView.jsx      # Split-screen study tools
+│   │   ├── components/
+│   │   │   ├── ui/AuthForms.jsx          # Sign-in/sign-up with i18n, validation
+│   │   │   ├── HeroParticleCanvas.jsx    # Three.js particle animation
+│   │   │   ├── IngestModal.jsx           # PDF upload modal
+│   │   │   ├── RoomCreationModal.jsx     # Room blueprint + architect chat
+│   │   │   ├── SocraticChatOverlay.jsx   # Q&A chat overlay
+│   │   │   ├── FlashCardsDeck.jsx        # Flip-card review
+│   │   │   ├── FeynmanVoiceMentor.jsx    # STT/TTS voice interface
+│   │   │   ├── InfographicView.jsx       # Image + HTML overlay
+│   │   │   ├── StudyToolCard.jsx         # Tab navigation
+│   │   │   └── ProtectedRoute.jsx        # Auth guard
+│   │   └── 3d/
+│   │       ├── RoomEnvironment.jsx       # Physics room, anchors, GLB models
+│   │       ├── roomAnchors.js            # Fixed anchor positions for themes
+│   │       ├── FirstPersonControls.jsx   # PointerLock + WASD controls
+│   │       ├── KnowledgeObject.jsx       # Data orb with orbiting text
+│   │       ├── ConceptMiniature.jsx      # Miniature concept viewer
+│   │       └── Environment.jsx           # Ambient lighting/sky
+│   ├── public/models/                    # GLB assets
+│   │   ├── bed.glb, chair.glb, desk.glb, bookshelf.glb
+│   │   ├── lamp.glb, plant.glb, sofa.glb, window.glb
+│   │   └── (additional: bed_linen.glb, led_tv.glb, nightstand.glb, etc.)
+│   ├── test.cjs                          # Puppeteer E2E test
+│   ├── package.json
+│   └── vite.config.js
+├── scripts/
+│   ├── supabase_schema.sql               # Tables + RLS
+│   ├── pgvector_migration.sql            # Embedding column + HNSW index + match fn
+│   ├── add_room_metadata.sql             # Additional columns
+│   ├── fix_rls_policies.sql              # RLS fixes
+│   └── fix_delete_policy.sql             # Deletion policy fix
+├── kickstart/
+│   └── documento_requerimientos.md       # Strategic requirements doc
+├── rules/
+│   └── buenas-practicas.md              # Coding conventions (Spanish)
+├── skills/                               # AI-assisted development skill definitions
+│   ├── n-core/ (spatial-logic, socratic-tutor, entropy)
+│   └── vendor/ (FastAPI, RAG, Supabase knowledge bases)
+├── TECHNICAL_DOC.md                     # Deep architecture documentation
+└── README.md
+```
+
+## Testing
+
+`backend/tests/test_ingest.py` contains a single pytest test that checks the `/health` endpoint returns 200. Run with:
+```bash
+cd backend
+pytest tests/
+```
+
+`frontend/test.cjs` is a Puppeteer E2E script that navigates to `/dashboard`, clicks the first palace link, and moves the mouse. It requires the dev server running on `localhost:5173`. Run with:
+```bash
+cd frontend
+node test.cjs
+```
+
+`backend/test_hf.py` is a standalone script that tests HuggingFace Inference API connectivity (not part of test suite).
+
+**Current state:** minimal test coverage. No unit tests for services, no integration tests for API endpoints. No CI/CD pipeline configured.
+
+## Known issues and technical debt
+
+1. **Embedding service falls back silently**: `backend/app/services/embedding_service.py:20-23` returns zero-vector placeholders when `HUGGINGFACE_API_KEY` is missing, masking configuration errors rather than failing explicitly.
+
+2. **Duplicate LLM extraction logic**: `backend/app/services/gemini_service.py` contains an older version of concept extraction (with free-form `model_type` + `position` fields) that duplicates the same logic in `llm_service.py:extract_palace_from_chunks` (which uses fixed anchors). Both exist in the codebase; only `llm_service.py` is active via the ingest pipeline.
+
+3. **Feynman voice streams via thread+queue**: `backend/app/api/endpoints/chat.py:269-282` bridges a synchronous generator to an async SSE endpoint using `threading.Thread` + `queue.Queue`. This works but bypasses FastAPI's native async streaming.
+
+4. **Supabase RLS deletion workaround**: `backend/app/api/endpoints/ingest.py:348-359` manually deletes child concepts before the parent palace to work around a Supabase RLS policy issue with `ON DELETE CASCADE`. The accompanying SQL in `scripts/fix_delete_policy.sql` and `scripts/fix_rls_policies.sql` documents multiple attempts to fix this at the DB level.
+
+5. **Theme stored in `description` field**: `backend/app/api/endpoints/chat.py:119` uses the `description` column of the `palaces` table to store the room theme string. This overloads a semantically different field.
+
+6. **LLM retry with loop-detection bypass**: `backend/app/services/llm_service.py:234-258` injects `"[ignoring loop detection]"` into prompts when Groq's content safety loop detection triggers. This is an undocumented workaround for the hosted API.
+
+7. **No type checking**: No mypy or pyright configuration. Backend uses `print()` for logging instead of a structured logger.
+
+8. **Dependency versions unpinned**: `backend/requirements.txt` uses `>=` version specifiers. `frontend/package.json` versions are specific.
+
+## Contributors
+
+Atribución de los 6 servicios backend (`backend/app/services/`) verificada mediante `git blame` línea por línea. El análisis distingue autoría real (quién escribió cada línea) de autoría de commit.
+
+- **David Beltran (David Beltrán / David Beltran Gomez)** `estedavid0104@gmail.com`
+  - Diseño e implementación completa de `quiz_service.py` (182 líneas, 100%) — generación de cuestionarios de 7 preguntas con 3 tipos (opción múltiple, abierta, verdadero/falso), evaluación de respuestas abiertas vía LLM y evaluación determinista de respuestas cerradas.
+  - Diseño e implementación completa de `flashcards_service.py` (69 líneas, 100%) — generación de 10 flashcards por tanda, tipos pregunta y completar, con respuesta estructurada en JSON.
+  - Diseño e implementación completa de `infographic_service.py` (258 líneas, 100%) — pipeline híbrido de 3 etapas: extracción semántica por LLM → generación de imagen de fondo (DALL-E 3) → metadatos de layout y paleta para overlay HTML en frontend.
+  - Rediseño completo del prompting Socrático en `llm_service.py` (~6% del archivo): metodología de 3 fases (escalado por fallos), anclaje espacial a objetos 3D, detección de fatiga, directiva de idioma (`language: "es" / "en"`). Conversión de llamadas LLM síncronas a `asyncio.to_thread()` para no bloquear el event loop de FastAPI.
+  - NO reclamar contribución sustancial en `rag_pipeline.py` (1 línea) ni `embedding_service.py` (0 líneas).
+  - Frontend: landing page, auth forms, i18n, HeroParticleCanvas, KnowledgeObject inicial, API endpoints (chat, quiz, flashcards, infographic), documentación técnica, skill definitions, SQL migrations (quizzes).
+
+- **Felipe Gómez (pipe)** `pipegomezl2006@gmail.com`
+  - Pipeline RAG completo: extracción de texto de PDFs (`rag_pipeline.py`, 145 de 146 líneas), chunking con overlapping, emparejamiento semántico concepto-chunk.
+  - Servicio de embeddings vía Hugging Face Inference API (`embedding_service.py`, 43 líneas, 100%).
+  - Arquitectura base del LLM service: ROOM_ANCHORS, Neural Architect prompt, Feynman Voice Mentor, pipeline de extracción de palacios (`llm_service.py`, ~94% del archivo).
+  - 3D room environment (RoomEnvironment con todos los sub-componentes de anclas), first-person controls, photo-based room generation (vision service, GLB matcher), Feynman voice mentor frontend, GLB 3D models, room anchors, StudyToolCard, ProtectedRoute, frontend config (Vite, ESLint), SQL migrations (RLS fixes, metadata), Puppeteer E2E test.
+
+- **LOUWPII** `148557091+LOUWPII@users.noreply.github.com` — Repository owner. Initial commit, README creation and management, PR merges.
+
+**Nota sobre coautoría en `llm_service.py`:** Las contribuciones de David Beltrán (~6% del archivo) modifican código original de Felipe Gómez. El prompt del tutor Socrático fue un reemplazo completo (metodología de 3 fases, anclaje espacial, detección de fatiga) sobre el prompt simple de Felipe, y los wrappers `asyncio.to_thread()` se añadieron sobre llamadas síncronas escritas por Felipe. Ningún commit incluye el marcador `Co-authored-by`.

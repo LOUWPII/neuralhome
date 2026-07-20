@@ -286,7 +286,7 @@ pytest tests/ -v
 
 Atribución de los 6 servicios backend (`backend/app/services/`) verificada mediante `git blame` línea por línea. El análisis distingue autoría real (quién escribió cada línea) de autoría de commit.
 
-- **David Beltran (David Beltrán / David Beltran Gomez)** `estedavid0104@gmail.com`
+- **David Beltrán Gómez** `estedavid0104@gmail.com`
   - Diseño e implementación completa de `quiz_service.py` (182 líneas, 100%) — generación de cuestionarios de 7 preguntas con 3 tipos (opción múltiple, abierta, verdadero/falso), evaluación de respuestas abiertas vía LLM y evaluación determinista de respuestas cerradas.
   - Diseño e implementación completa de `flashcards_service.py` (69 líneas, 100%) — generación de 10 flashcards por tanda, tipos pregunta y completar, con respuesta estructurada en JSON.
   - Diseño e implementación completa de `infographic_service.py` (258 líneas, 100%) — pipeline híbrido de 3 etapas: extracción semántica por LLM → generación de imagen de fondo (DALL-E 3) → metadatos de layout y paleta para overlay HTML en frontend.
@@ -294,7 +294,7 @@ Atribución de los 6 servicios backend (`backend/app/services/`) verificada medi
   - NO reclamar contribución sustancial en `rag_pipeline.py` (1 línea) ni `embedding_service.py` (0 líneas).
   - Frontend: landing page, auth forms, i18n, HeroParticleCanvas, KnowledgeObject inicial, API endpoints (chat, quiz, flashcards, infographic), documentación técnica, skill definitions, SQL migrations (quizzes).
 
-- **Felipe Gómez (pipe)** `pipegomezl2006@gmail.com`
+- **Felipe Gómez López** `pipegomezl2006@gmail.com`
   - Pipeline RAG completo: extracción de texto de PDFs (`rag_pipeline.py`, 145 de 146 líneas), chunking con overlapping, emparejamiento semántico concepto-chunk.
   - Servicio de embeddings vía Hugging Face Inference API (`embedding_service.py`, 43 líneas, 100%).
   - Arquitectura base del LLM service: ROOM_ANCHORS, Neural Architect prompt, Feynman Voice Mentor, pipeline de extracción de palacios (`llm_service.py`, ~94% del archivo).
@@ -302,4 +302,4 @@ Atribución de los 6 servicios backend (`backend/app/services/`) verificada medi
 
 - **LOUWPII** `148557091+LOUWPII@users.noreply.github.com` — Repository owner. Initial commit, README creation and management, PR merges.
 
-**Nota sobre coautoría en `llm_service.py`:** Las contribuciones de David Beltrán (~6% del archivo) modifican código original de Felipe Gómez. El prompt del tutor Socrático fue un reemplazo completo (metodología de 3 fases, anclaje espacial, detección de fatiga) sobre el prompt simple de Felipe, y los wrappers `asyncio.to_thread()` se añadieron sobre llamadas síncronas escritas por Felipe. Ningún commit incluye el marcador `Co-authored-by`.
+**Nota sobre coautoría en `llm_service.py`:** Las contribuciones de David Beltrán (~6% del archivo) modifican código original de Felipe Gómez. El prompt del tutor Socrático fue un reemplazo completo (metodología de 3 fases, anclaje espacial, detección de fatiga) sobre el prompt simple de Felipe, y los wrappers `asyncio.to_thread()` se añadieron sobre llamadas síncronas escritas por Felipe.
